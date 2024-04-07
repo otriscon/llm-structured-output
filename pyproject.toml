@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "LLM Structured Output"
+version = "0.0.1"
+authors = [
+  { name="Oscar D.P. Triscon", email="github@triscon.com" },
+]
+description = "Constrain LLM generation to structured output, such as function calling a.k.a. tool use"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/otriscon/llm-structured-output"
+Issues = "https://github.com/otriscon/llm-structured-output/issues"

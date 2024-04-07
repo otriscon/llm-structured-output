@@ -1,0 +1,4 @@
+mlx-lm
+fastapi
+pydantic
+uvicorn
