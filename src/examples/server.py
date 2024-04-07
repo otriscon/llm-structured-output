@@ -13,7 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 
 from examples.llm_schema import Model
-from util.output import info, warning, debug
+from llm_structured_output.util.output import info, warning, debug
 
 
 app = FastAPI()

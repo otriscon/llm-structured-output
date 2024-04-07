@@ -8,14 +8,14 @@ import re
 from collections import defaultdict
 from typing import Iterable
 
-from acceptor import (
+from .acceptor import (
     TokenAcceptor,
     StateMachineAcceptor,
     SequenceAcceptor,
     TextAcceptor,
     WaitForAcceptor,
 )
-from json_acceptor import (
+from .json_acceptor import (
     WhitespaceAcceptor,
     BooleanAcceptor,
     NullAcceptor,

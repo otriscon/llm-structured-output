@@ -67,7 +67,8 @@ You'll find:
 - A server example that implements an OpenAI-compatible API including tools / function
   calling. Unlike [OpenAI's](https://platform.openai.com/docs/api-reference/chat/object),
   this implementation always generates valid JSON, and does not return hallucinated
-  parameters not defined in your function schema. See [server.py](src/examples/server.py).
+  parameters not defined in your function schema (but it may still hallucinate their
+  values). See [server.py](src/examples/server.py).
 
 ## Usage
 
@@ -75,29 +76,29 @@ You'll find:
 
 Clone this repo:
 
-```
+```sh
 git clone https://github.com/otriscon/llm-structured-output.git
 cd llm-structured-output
 ```
 
 Optional, but recommended: create and activate a virtual environment with your favorite tool of choice, e.g.
 
-```
+```sh
 python -m venv .venv
 source .venv/bin/activate
 ```
 
 Move into the examples folder and install the requirements, then move back:
 
-```
-cd examples
+```sh
+cd src/examples
 pip install -r requirements.txt
 cd ..
 ```
 
 Run the llm_schema example:
 
-```
+```sh
 MODEL=mistralai/Mistral-7B-Instruct-v0.2
 
 LLM_PROMPT='[INST] Parse the following address into a JSON object: "27 Barrow St, New York, NY 10014". Your answer should be only a JSON object according to this schema: {"type": "object", "properties": {"streetNumber": {"type": "number"}, "streetName": {"type": "string"}, "city": {"type": {"string"}}, "state": {"type": "string"}, "zipCode": {"type": "number"}}}. Do not explain the result, just output it. Do not add any additional information. [/INST]'
@@ -109,7 +110,7 @@ python3 -m examples.llm_schema --model-path $MODEL --prompt "$LLM_PROMPT" --sche
 
 Run the server example:
 
-```
+```sh
 MODEL_PATH=mistralai/Mistral-7B-Instruct-v0.2 uvicorn examples.server:app --port 8080 --reload
 ```
 

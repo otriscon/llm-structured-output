@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "LLM Structured Output"
+name = "llm_structured_output"
 version = "0.0.1"
 authors = [
   { name="Oscar D.P. Triscon", email="github@triscon.com" },

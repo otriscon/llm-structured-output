@@ -4,14 +4,14 @@ Acceptors for JSON parsing or constraning LLM generation to JSON outputs.
 
 import json
 
-from acceptor import (
+from .acceptor import (
     TokenAcceptor,
     CharAcceptor,
     StateMachineAcceptor,
     SequenceAcceptor,
     TextAcceptor,
 )
-from util.tokentrie import TokenTrie
+from .util.tokentrie import TokenTrie
 
 
 class WhitespaceTokenTrie(TokenTrie):

@@ -12,9 +12,9 @@ import mlx.nn as nn
 
 from mlx_lm.utils import load
 
-from json_schema_acceptor import JsonSchemaAcceptorDriver
-from util.bitmap_utils import bias_logits, count_set_bits, enumerate_set_bits
-from util.output import info, bold, bolddim
+from llm_structured_output import JsonSchemaAcceptorDriver, bias_logits
+from llm_structured_output.util.bitmap import count_set_bits, enumerate_set_bits
+from llm_structured_output.util.output import info, bold, bolddim
 
 
 class RejectedCompletion(Exception):

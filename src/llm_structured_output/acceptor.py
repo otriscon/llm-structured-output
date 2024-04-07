@@ -57,7 +57,7 @@ from copy import copy as shallowcopy
 from time import time_ns
 from typing import Iterable, Tuple
 
-from util.tokentrie import TokenTrie
+from .util.tokentrie import TokenTrie
 
 
 class TokenAcceptor:

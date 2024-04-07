@@ -10,7 +10,7 @@ import time
 from deepdiff import DeepDiff
 
 from examples.llm_schema import Model
-from util.output import info, bold, inverse, debug
+from llm_structured_output.util.output import info, bold, inverse, debug
 
 
 def run_eval_case(model, case, header):
