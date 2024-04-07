@@ -5,6 +5,7 @@ Example of JSON schema decoding for Mixtral with MLX.
 import argparse
 import json
 import time
+from operator import itemgetter
 from typing import Iterable, Optional
 
 import mlx.core as mx
@@ -12,9 +13,9 @@ import mlx.nn as nn
 
 from mlx_lm.utils import load
 
-from llm_structured_output import JsonSchemaAcceptorDriver, bias_logits
+from llm_structured_output import JsonSchemaAcceptorDriver, extract_vocabulary, bias_logits
 from llm_structured_output.util.bitmap import count_set_bits, enumerate_set_bits
-from llm_structured_output.util.output import info, bold, bolddim
+from llm_structured_output.util.output import info, bold, bolddim, debug
 
 
 class RejectedCompletion(Exception):
@@ -36,6 +37,7 @@ class Model:
         mx.random.seed(0)
         self.model = None
         self.tokenizer = None
+        self.vocabulary = None
         self.eos_id = None
 
     def load(self, model_path: str):
@@ -43,7 +45,16 @@ class Model:
         Load locally or download from Huggingface hub.
         """
         self.model, self.tokenizer = load(model_path)
-        self.eos_id = self.tokenizer.eos_token_id
+        self.vocabulary, self.eos_id = extract_vocabulary(self.tokenizer)
+
+    def _decode(self, tokens):
+        """
+        Allows to decode without removing the initial space.
+        The Huggingface tokenizer doesn't seem to have an easy way to do this.
+        It's a bit scary that we may be leaving out some extra magic that the
+        tokenizer decoder may do in some particular LLM, so YMMV.
+        """
+        return "".join([ self.vocabulary[token] for token in tokens ])
 
     def sample(self, logits, temp):
         if temp == 0:
@@ -78,7 +89,7 @@ class Model:
             logits = bias_logits(mx, logits[0, -1, :], accepted_token_bitmap)
             tokens = [self.sample(logits, temp)]
             yield tokens
-            token_acceptor.advance_token(self.tokenizer.decode(tokens))
+            token_acceptor.advance_token(self._decode(tokens))
 
     def generate_with_preemptive_decoding(
         self,
@@ -107,7 +118,7 @@ class Model:
         first_token = self.sample(first_token_logits, temp)
         tokens = [first_token]
         yield tokens
-        token_acceptor.advance_token(self.tokenizer.decode(tokens))
+        token_acceptor.advance_token(self._decode(tokens))
         accepted_token_bitmap = token_acceptor.select_valid_tokens()
 
         while True:
@@ -136,7 +147,7 @@ class Model:
             first_token = self.sample(first_token_logits, temp)
             tokens = [first_token]
 
-            token_acceptor.advance_token(self.tokenizer.decode([first_token]))
+            token_acceptor.advance_token(self._decode([first_token]))
             accepted_token_bitmap = token_acceptor.select_valid_tokens()
             if not accepted_token_bitmap:
                 raise RejectedCompletion()
@@ -154,7 +165,7 @@ class Model:
                 second_token = self.sample(second_token_logits, temp)
                 tokens.append(second_token)
 
-                token_acceptor.advance_token(self.tokenizer.decode([second_token]))
+                token_acceptor.advance_token(self._decode([second_token]))
                 accepted_token_bitmap = token_acceptor.select_valid_tokens()
 
                 # Select the accepted generation in the cache, restoring it to batch dimension 1.
@@ -188,7 +199,7 @@ class Model:
         first_token = self.sample(first_token_logits, temp)
         tokens = [first_token]
         yield tokens
-        token_acceptor.advance_token(self.tokenizer.decode(tokens))
+        token_acceptor.advance_token(self._decode(tokens))
         accepted_token_bitmap = token_acceptor.select_valid_tokens()
 
         while True:
@@ -212,7 +223,7 @@ class Model:
             first_token = self.sample(first_token_logits, temp)
             tokens = [first_token]
 
-            token_acceptor.advance_token(self.tokenizer.decode([first_token]))
+            token_acceptor.advance_token(self._decode([first_token]))
             accepted_token_bitmap = token_acceptor.select_valid_tokens()
             if not accepted_token_bitmap:
                 raise RejectedCompletion()
@@ -230,7 +241,7 @@ class Model:
                 second_token = self.sample(second_token_logits, temp)
                 tokens.append(second_token)
 
-                token_acceptor.advance_token(self.tokenizer.decode([second_token]))
+                token_acceptor.advance_token(self._decode([second_token]))
                 accepted_token_bitmap = token_acceptor.select_valid_tokens()
 
                 # Select the accepted generation in the cache for the next round.
@@ -289,15 +300,9 @@ class Model:
         prompt_tokens = self.tokenizer.encode(prompt)
 
         if schema:
-            # Note: do not use self.tokenizer.vocab instead of this,
-            # because the text returned are pre-processed fragments.
-            vocabulary = [
-                (self.tokenizer.decode([i]), i)
-                for i in range(self.tokenizer.vocab_size)
-            ]
             token_acceptor = JsonSchemaAcceptorDriver(
                 schema,
-                vocabulary,
+                self.vocabulary.items(),
                 self.eos_id,
                 is_encapsulated_json=encapsulated,
             )
@@ -338,7 +343,7 @@ class Model:
                 tokens = tokens[0:eos_index]
 
             if tokens:
-                text = self.tokenizer.decode(tokens)
+                text = self._decode(tokens)
                 yield {
                     "op": "generatedTokens",
                     "text": text,
@@ -357,6 +362,11 @@ class Model:
             start_time = time.time_ns()
 
         assert False
+
+    def _debug_top_tokens(self, logits, count=10):
+        token_logits = sorted(enumerate(logits.tolist()), key=itemgetter(1), reverse=True)
+        top_tokens = [(self._decode([t]), p) for t, p in token_logits[:count]]
+        debug("TOP TOKENS:", top_tokens)
 
 
 def main():

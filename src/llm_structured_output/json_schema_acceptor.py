@@ -591,7 +591,7 @@ class JsonSchemaAcceptorDriver:
     def __init__(
         self,
         schema: dict,
-        vocabulary: Iterable[str],
+        vocabulary: Iterable[Tuple[int, str]],
         eos_id: int,
         is_encapsulated_json: bool = False,
     ):

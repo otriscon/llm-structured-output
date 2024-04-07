@@ -66,7 +66,7 @@ class TokenAcceptor:
     """
 
     @classmethod
-    def prepare_vocabulary(cls, vocabulary: Iterable[Tuple[str, int]]) -> TokenTrie:
+    def prepare_vocabulary(cls, vocabulary: Iterable[Tuple[int, str]]) -> TokenTrie:
         """
         Given a list of tokens (typically the vocabulary of an LLM), create
         a trie that will be used to select the tokens accepted by the current

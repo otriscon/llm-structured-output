@@ -24,12 +24,12 @@ class TokenTrie:
         self.children: dict[str, TokenTrie] = {}
         self.ids: int = 0
 
-    def insert_all(self, vocabulary: Iterable[Tuple[str, int]]):
+    def insert_all(self, vocabulary: Iterable[Tuple[int, str]]):
         """
         Insert all the tokens in the vocabulary in the trie, with the id of
         each token being its index in the vocabulary.
         """
-        for token, i in vocabulary:
+        for i, token in vocabulary:
             if len(token) > 0:
                 self.insert(token, i)
 

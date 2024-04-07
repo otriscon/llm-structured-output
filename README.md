@@ -121,7 +121,7 @@ Install in your project with `pip install llm-structured-output` and
 use a `JsonSchemaAcceptorDriver` within your normal generation loop:
 
 ```python
-from llm_structured_output import JsonSchemaAcceptorDriver, bias_logits
+from llm_structured_output import JsonSchemaAcceptorDriver, extract_vocabulary, bias_logits
 
 # ...
 
@@ -129,8 +129,7 @@ from llm_structured_output import JsonSchemaAcceptorDriver, bias_logits
 model, tokenizer = load(model_path)
 
 # Instantiate a token acceptor
-vocabulary = [(tokenizer.decode([i]), i) for i in range(tokenizer.vocab_size)]
-eos_id = tokenizer.eos_token_id
+vocabulary, eos_id = extract_vocabulary(tokenizer)
 token_acceptor = JsonSchemaAcceptorDriver(schema, vocabulary, eos_id)
 
 cache = None
