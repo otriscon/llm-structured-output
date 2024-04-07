@@ -45,20 +45,20 @@ You'll find:
   to minimize combinatorial explosion: we use a trie to traverse the token
   vocabulary in logarithmic time, and collapse the trie branches when multiple
   options are equivalent. We also prune the chart by removing equivalent
-  states arrived at by different paths. See [acceptor.py](src/acceptor.py).
+  states arrived at by different paths. See [acceptor.py](src/llm_structured_output/acceptor.py).
 
 - A JSON acceptor based on the framework above that accepts valid JSON. See
-  [json_acceptor.py](src/json_acceptor.py).
+  [json_acceptor.py](src/llm_structured_output/json_acceptor.py).
 
 - A JSON schema acceptor based on both items above that accepts valid JSON that
-  conforms to a JSON schema. See [json_schema_acceptor.py](src/json_schema_acceptor.py).
+  conforms to a JSON schema. See [json_schema_acceptor.py](src/llm_structured_output/json_schema_acceptor.py).
   Please note that most but not all JSON schema directives are implemented.
   Please open an issue if one that you need is not.
 
 ### Reference implementation / examples
 
-- An example of using the acceptors above to guide decoding in mistral and
-  mixtral, using Apple's MLX framework. See [mistral.py](src/examples/mistral.py).
+- An example of using the acceptors above to guide decoding in an LLM using
+  Apple's MLX framework. See [llm_schema.py](src/examples/llm_schema.py).
   This example includes several decoding techniques, including pre-emptive evaluation,
   which is a way to use the acceptor to anticipate the tokens that can be generated
   according to the schema, and use that to evaluate two tokens at a time instead of
