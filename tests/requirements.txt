@@ -1,2 +1,3 @@
 mlx-lm
+sentencepiece
 deepdiff
