@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from typing import Iterable
+from typing import Iterable, Tuple
 
 from .acceptor import (
     TokenAcceptor,

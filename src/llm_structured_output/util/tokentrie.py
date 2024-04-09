@@ -29,9 +29,9 @@ class TokenTrie:
         Insert all the tokens in the vocabulary in the trie, with the id of
         each token being its index in the vocabulary.
         """
-        for i, token in vocabulary:
+        for _id, token in vocabulary:
             if len(token) > 0:
-                self.insert(token, i)
+                self.insert(token, _id)
 
     def insert(self, token, _id):
         """

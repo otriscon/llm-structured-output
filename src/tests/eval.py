@@ -18,15 +18,6 @@ def run_eval_case(model, case, header):
     gold_completion = json.loads(case["completion"].partition("<functioncall>")[2])
     tools = json.loads(case["tools"])
 
-    prompt = "\n".join(
-        (
-            message.content
-            if message["role"] == "assistant"
-            else f"[INST] {message['content']} [/INST]"
-        )
-        for message in messages
-    )
-
     schema = {
         "anyOf": [
             {
@@ -44,6 +35,7 @@ def run_eval_case(model, case, header):
                         "required": ["name", "arguments"],
                     }
                 },
+                "required": ["function_call"],
             }
             for tool in tools
         ]
@@ -56,7 +48,7 @@ def run_eval_case(model, case, header):
     completion_time = 0
 
     for result in model.completion(
-        prompt,
+        messages,
         schema=schema,
         max_tokens=4000,
         temp=0,

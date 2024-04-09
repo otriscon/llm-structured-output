@@ -6,16 +6,17 @@ import argparse
 import json
 import time
 from operator import itemgetter
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Union
 
 import mlx.core as mx
 import mlx.nn as nn
 
 from mlx_lm.utils import load
 
-from llm_structured_output import JsonSchemaAcceptorDriver, extract_vocabulary, bias_logits
-from llm_structured_output.util.bitmap import count_set_bits, enumerate_set_bits
+from llm_structured_output import JsonSchemaAcceptorDriver
+from llm_structured_output.util.bitmap import bias_logits, count_set_bits, enumerate_set_bits
 from llm_structured_output.util.output import info, bold, bolddim, debug
+from llm_structured_output.util.tokenization import HuggingfaceTokenizerHelper
 
 
 class RejectedCompletion(Exception):
@@ -44,17 +45,12 @@ class Model:
         """
         Load locally or download from Huggingface hub.
         """
-        self.model, self.tokenizer = load(model_path)
-        self.vocabulary, self.eos_id = extract_vocabulary(self.tokenizer)
+        self.model, tokenizer = load(model_path)
+        self.tokenizer = HuggingfaceTokenizerHelper(tokenizer)
+        self.vocabulary, self.eos_id = self.tokenizer.extract_vocabulary()
 
     def _decode(self, tokens):
-        """
-        Allows to decode without removing the initial space.
-        The Huggingface tokenizer doesn't seem to have an easy way to do this.
-        It's a bit scary that we may be leaving out some extra magic that the
-        tokenizer decoder may do in some particular LLM, so YMMV.
-        """
-        return "".join([ self.vocabulary[token] for token in tokens ])
+        return self.tokenizer.no_strip_decode(tokens)
 
     def sample(self, logits, temp):
         if temp == 0:
@@ -147,13 +143,17 @@ class Model:
             first_token = self.sample(first_token_logits, temp)
             tokens = [first_token]
 
+            if first_token == self.eos_id:
+                yield tokens
+                break
+
             token_acceptor.advance_token(self._decode([first_token]))
             accepted_token_bitmap = token_acceptor.select_valid_tokens()
             if not accepted_token_bitmap:
                 raise RejectedCompletion()
 
             # If we had submitted 2-token continuations, we can decode a second token
-            if len(batch[0]) > 1 and first_token != self.eos_id:
+            if len(batch[0]) > 1:
                 index = next(  # Find which of the second tokens was selected
                     i
                     for i, batch_item in enumerate(batch)
@@ -223,6 +223,10 @@ class Model:
             first_token = self.sample(first_token_logits, temp)
             tokens = [first_token]
 
+            if first_token == self.eos_id:
+                yield tokens
+                break
+
             token_acceptor.advance_token(self._decode([first_token]))
             accepted_token_bitmap = token_acceptor.select_valid_tokens()
             if not accepted_token_bitmap:
@@ -286,7 +290,7 @@ class Model:
 
     def completion(
         self,
-        prompt: str,
+        prompt: Union[str, Iterable[dict[str, str]]],
         schema: dict,
         encapsulated: bool = False,
         max_tokens: int = 1000,
@@ -297,12 +301,12 @@ class Model:
         if seed is not None:
             mx.random.seed(seed)
 
-        prompt_tokens = self.tokenizer.encode(prompt)
+        prompt_tokens = self.tokenizer.encode_prompt(prompt)
 
         if schema:
             token_acceptor = JsonSchemaAcceptorDriver(
                 schema,
-                self.vocabulary.items(),
+                self.vocabulary,
                 self.eos_id,
                 is_encapsulated_json=encapsulated,
             )
