@@ -23,7 +23,15 @@ Differences with other approaches:
 
 ## Demo
 
-Coming soon<sup>TM</sup>
+https://github.com/otriscon/llm-structured-output/assets/165947759/f38704da-34b0-4601-be8b-48b92199445d
+
+Without a schema, Mistral 7B Instruct 0.2 solves the data extraction task but,
+despite our instructions to the contrary, it adds a lot of additional output that's
+not necessary, is hard to parse, and wastes time.
+
+https://github.com/otriscon/llm-structured-output/assets/165947759/f79a78ca-8244-4ec6-9e90-b6cdedfbb8b0
+
+With the schema, the generation is precisely the output we require.
 
 ## What's in the box
 
