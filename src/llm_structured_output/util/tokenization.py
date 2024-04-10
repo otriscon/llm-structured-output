@@ -2,7 +2,7 @@
 Tokenizer utils.
 """
 
-from typing import Iterable, Union
+from typing import Union
 
 SPIECE_UNDERLINE = "▁"
 
@@ -44,11 +44,11 @@ class HuggingfaceTokenizerHelper:
         else:
             return fragment
 
-    def extract_vocabulary(self) -> tuple[Iterable[tuple[int, str]], int]:
+    def extract_vocabulary(self) -> tuple[list[tuple[int, str]], int]:
         """
         Extract the vocabulary and eos_token_id from a Huggingface PreTrainedTokenizer.
         """
         return (
-            ((i, self.no_strip_decode([i])) for _, i in self.tokenizer.vocab.items()),
+            [(i, self.no_strip_decode([i])) for _, i in self.tokenizer.vocab.items()],
             self.tokenizer.eos_token_id,
         )
