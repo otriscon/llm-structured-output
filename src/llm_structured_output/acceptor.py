@@ -392,7 +392,7 @@ class StateMachineAcceptor(TokenAcceptor):
         initial_cursor.current_state = self.initial_state
         return self._find_transitions(initial_cursor, [], set())
 
-    def _find_transitions(self, cursor, visited_states, seen_final_values):
+    def _find_transitions(self, cursor, visited_states, traversed_edges):
         try:
             edges = self.get_edges(cursor.current_state)
         except (KeyError, IndexError, TypeError):
@@ -411,11 +411,11 @@ class StateMachineAcceptor(TokenAcceptor):
                         new_visited_states = visited_states + [cursor.current_state]
                         assert target_state not in new_visited_states  # Infinite loop
                         cursors += self._cascade_transition(
-                            copy, new_visited_states, seen_final_values
+                            copy, new_visited_states, traversed_edges
                         )
         return cursors
 
-    def _cascade_transition(self, cursor, visited_states, seen_final_values):
+    def _cascade_transition(self, cursor, visited_states, traversed_edges):
         assert cursor.transition_cursor.in_accepted_state()
         # Copy before validation to allow for side effects, e.g. storing the value
         cursors = []
@@ -429,14 +429,14 @@ class StateMachineAcceptor(TokenAcceptor):
             copy.target_state = None
             copy.accept_history = copy.accept_history + [copy.transition_cursor]
             copy.transition_cursor = None
-            if copy.in_accepted_state():
-                # De-duplicate cursors that have the reached accepted state with the same value.
-                # This prevents combinatorial explosion because of e.g. empty transitions.
-                value = repr(copy.get_value())
-                if value not in seen_final_values:
-                    seen_final_values.add(value)
+            # De-duplicate cursors that have reached the same state with the same value.
+            # This prevents combinatorial explosion because of e.g. empty transitions.
+            state_value = (copy.current_state, repr(copy.get_value()))
+            if state_value not in traversed_edges:
+                traversed_edges.add(state_value)
+                if copy.in_accepted_state():
                     cursors.append(copy)
-            cursors += self._find_transitions(copy, visited_states, seen_final_values)
+                cursors += self._find_transitions(copy, visited_states, traversed_edges)
         return cursors
 
     class Cursor(TokenAcceptor.Cursor):
@@ -468,7 +468,7 @@ class StateMachineAcceptor(TokenAcceptor):
 
         def advance(self, char):
             next_cursors = []
-            seen_final_values = set()
+            traversed_edges = set()
             for followup_cursor in self.transition_cursor.advance(char):
                 copy = self.clone()
                 # pylint: disable-next=attribute-defined-outside-init
@@ -477,7 +477,7 @@ class StateMachineAcceptor(TokenAcceptor):
                 if followup_cursor.in_accepted_state():
                     # pylint: disable-next=protected-access
                     next_cursors += self.acceptor._cascade_transition(
-                        copy, [], seen_final_values
+                        copy, [], traversed_edges
                     )
             return next_cursors
 
@@ -488,7 +488,7 @@ class StateMachineAcceptor(TokenAcceptor):
             """
             return True
 
-        def can_complete_transition( # pylint: disable-next=unused-argument
+        def can_complete_transition(  # pylint: disable-next=unused-argument
             self, transition_value, target_state, is_end_state
         ) -> bool:
             """
