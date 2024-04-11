@@ -104,6 +104,12 @@ def main():
         default=0,
         help="Start at the given evaluation case number",
     )
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=None,
+        help="Limit the number of cases to run",
+    )
     args = parser.parse_args()
 
     info("Loading model...")
@@ -115,7 +121,11 @@ def main():
         pass_count = 0
         fail_count = 0
         t0 = time.time_ns()
-        for i, case in enumerate(cases[args.skip:]):
+        if args.count:
+            end_index = args.skip + args.count
+        else:
+            end_index = len(cases)
+        for i, case in enumerate(cases[args.skip:end_index]):
             if run_eval_case(model, case, f"[{i+args.skip}]"):
                 pass_count += 1
             else:
