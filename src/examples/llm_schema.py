@@ -273,11 +273,11 @@ class Model:
         T = h.shape[1]  # pylint: disable=invalid-name
         if T > 1:
             if cache is None:
-                N = 0  # pylint: disable=invalid-name
+                S = 0  # pylint: disable=invalid-name
             else:
-                N = cache[0][0].shape[2]  # pylint: disable=invalid-name
-            mask = nn.MultiHeadAttention.create_additive_causal_mask(N + T)
-            mask = mask.split([N])[1].astype(h.dtype)
+                S = cache[0][0].shape[2]  # pylint: disable=invalid-name
+            mask = nn.MultiHeadAttention.create_additive_causal_mask(S + T)
+            mask = mask.split([S])[1].astype(h.dtype)
 
         if cache is None:
             cache = [None] * len(model.layers)
