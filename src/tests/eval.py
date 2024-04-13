@@ -13,7 +13,7 @@ from examples.llm_schema import Model
 from llm_structured_output.util.output import info, bold, inverse, debug
 
 
-def run_eval_case(model, case, header):
+def run_eval_case(model, case, header, temp=None, seed=None, preemptive_batch_size=0):
     messages = case["prompt"]
     gold_completion = json.loads(case["completion"].partition("<functioncall>")[2])
     tools = json.loads(case["tools"])
@@ -51,7 +51,9 @@ def run_eval_case(model, case, header):
         messages,
         schema=schema,
         max_tokens=4000,
-        temp=0,
+        temp=temp,
+        seed=seed,
+        preemptive_batch_size=preemptive_batch_size,
     ):
         if result["op"] == "evaluatedPrompt":
             prompt_tokens += result["token_count"]
@@ -110,6 +112,19 @@ def main():
         default=None,
         help="Limit the number of cases to run",
     )
+    parser.add_argument(
+        "--temp",
+        help="The sampling temperature.",
+        type=float,
+        default=0.0,
+    )
+    parser.add_argument("--seed", type=int, default=0, help="The PRNG seed")
+    parser.add_argument(
+        "--preemptive",
+        type=int,
+        default=0,
+        help="If greater than zero, the maximum size of the batch for pre-emptive decoding",
+    )
     args = parser.parse_args()
 
     info("Loading model...")
@@ -125,8 +140,15 @@ def main():
             end_index = args.skip + args.count
         else:
             end_index = len(cases)
-        for i, case in enumerate(cases[args.skip:end_index]):
-            if run_eval_case(model, case, f"[{i+args.skip}]"):
+        for i, case in enumerate(cases[args.skip : end_index]):
+            if run_eval_case(
+                model,
+                case,
+                f"[{i+args.skip}]",
+                temp=args.temp,
+                seed=args.seed,
+                preemptive_batch_size=args.preemptive,
+            ):
                 pass_count += 1
             else:
                 fail_count += 1

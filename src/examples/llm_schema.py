@@ -401,7 +401,7 @@ def main():
         type=float,
         default=0.0,
     )
-    parser.add_argument("--seed", type=int, default=0, help="The PRNG seed")
+    parser.add_argument("--seed", type=int, default=None, help="The PRNG seed")
     parser.add_argument(
         "--repeat-prompt",
         action=argparse.BooleanOptionalAction,
