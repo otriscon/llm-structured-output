@@ -1,10 +1,11 @@
 # pylint: disable=missing-class-docstring,missing-function-docstring
 """
-Example of JSON schema decoding for Mixtral with MLX.
+Example of JSON schema decoding with MLX.
 """
 import argparse
 import json
 import time
+from math import inf
 from operator import itemgetter
 from typing import Iterable, Optional, Union
 
@@ -14,7 +15,11 @@ import mlx.nn as nn
 from mlx_lm.utils import load
 
 from llm_structured_output import JsonSchemaAcceptorDriver
-from llm_structured_output.util.bitmap import bias_logits, count_set_bits, enumerate_set_bits
+from llm_structured_output.util.bitmap import (
+    bias_logits,
+    count_set_bits,
+    enumerate_set_bits,
+)
 from llm_structured_output.util.output import info, bold, bolddim, debug
 from llm_structured_output.util.tokenization import HuggingfaceTokenizerHelper
 
@@ -368,8 +373,12 @@ class Model:
         assert False
 
     def _debug_top_tokens(self, logits, count=10):
-        token_logits = sorted(enumerate(logits.tolist()), key=itemgetter(1), reverse=True)
-        top_tokens = [(self._decode([t]), p) for t, p in token_logits[:count]]
+        token_logits = sorted(
+            enumerate(logits.tolist()), key=itemgetter(1), reverse=True
+        )
+        top_tokens = [
+            (self._decode([t]), p) for t, p in token_logits[:count] if p != -inf
+        ]
         debug("TOP TOKENS:", top_tokens)
 
 
