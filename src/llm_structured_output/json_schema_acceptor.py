@@ -592,6 +592,11 @@ class JsonSchemaAcceptorDriver:
         eos_id: int,
         is_encapsulated_json: bool = False,
     ):
+        # Make sure the eos token is removed.
+        # Ideally, the caller should not pass any special tokens (bos, eos, unk, pad, ...)
+        vocabulary = [
+            (token, fragment) for token, fragment in vocabulary if token != eos_id
+        ]
         self.trie = TokenAcceptor.prepare_vocabulary(vocabulary)
         prepare_json_acceptor_tries(self.trie)
         self.eos_id = eos_id
