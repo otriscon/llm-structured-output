@@ -386,13 +386,13 @@ class ObjectAcceptor(StateMachineAcceptor):
     def get_edges(self, state):
         return {
             0: [(TextAcceptor("{"), 1)],
-            1: [(WhitespaceAcceptor(), 2), (TextAcceptor("}"), "$")],
-            2: [(ObjectAcceptor.PropertyAcceptor(), 3)],
-            3: [(WhitespaceAcceptor(), 4)],
-            4: [
-                (SequenceAcceptor([TextAcceptor(","), WhitespaceAcceptor()]), 2),
-                (TextAcceptor("}"), "$"),
-            ],
+            1: [(self.EmptyTransition, 2), (self.EmptyTransition, 6)],
+            2: [(WhitespaceAcceptor(), 3)],
+            3: [(ObjectAcceptor.PropertyAcceptor(), 4)],
+            4: [(WhitespaceAcceptor(), 5)],
+            5: [(TextAcceptor(","), 2), (self.EmptyTransition, 7)],
+            6: [(WhitespaceAcceptor(), 7)],
+            7: [(TextAcceptor("}"), "$")],
         }[state]
 
     class Cursor(StateMachineAcceptor.Cursor):
@@ -407,7 +407,7 @@ class ObjectAcceptor(StateMachineAcceptor):
         def can_complete_transition(
             self, transition_value, target_state, is_end_state
         ) -> bool:
-            if self.current_state == 2:
+            if self.current_state == 3:
                 prop_name, prop_value = transition_value
                 self.value[prop_name] = prop_value
             return True

@@ -2,6 +2,7 @@
 Acceptors for JSON schema validation or constraning LLM generation to JSON
 outputs complying with a JSON schema.
 """
+
 from __future__ import annotations
 
 import re
@@ -309,24 +310,18 @@ class ObjectSchemaAcceptor(ObjectAcceptor):
         super().__init__()
 
     def get_edges(self, state):
-        return {
-            0: lambda: [(TextAcceptor("{"), 1)],
-            1: lambda: [(WhitespaceAcceptor(), 2), (TextAcceptor("}"), "$")],
-            2: lambda: [
+        if state == 3:
+            return [
                 (
                     ObjectSchemaAcceptor.PropertyAcceptor(
                         prop_name, prop_schema, self.context
                     ),
-                    3,
+                    4,
                 )
                 for prop_name, prop_schema in self.properties.items()
-            ],
-            3: lambda: [(WhitespaceAcceptor(), 4)],
-            4: lambda: [
-                (SequenceAcceptor([TextAcceptor(","), WhitespaceAcceptor()]), 2),
-                (TextAcceptor("}"), "$"),
-            ],
-        }[state]()
+            ]
+        else:
+            return super().get_edges(state)
 
     def property_names(self):
         """
@@ -350,14 +345,16 @@ class ObjectSchemaAcceptor(ObjectAcceptor):
             self.acceptor = acceptor
 
         def can_attempt_transition(self, transition_acceptor, target_state) -> bool:
-            if self.current_state == 2 and target_state == 3:
+            if target_state == "$":
+                return all(
+                    prop_name in self.value
+                    for prop_name in self.acceptor.required_property_names()
+                )
+            if self.current_state == 3 and target_state == 4:
+                # Is a property already set?
                 return transition_acceptor.prop_name not in self.value
-            if self.current_state == 4:
-                if target_state == "$":
-                    return all(
-                        prop_name in self.value
-                        for prop_name in self.acceptor.required_property_names()
-                    )
+            if self.current_state == 5 and target_state == 2:
+                # Are all allowed properties already set?
                 return len(self.value.keys()) < len(self.acceptor.property_names())
             return True
 
