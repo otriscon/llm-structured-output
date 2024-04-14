@@ -3,6 +3,7 @@
 Terminal colored output
 """
 
+
 def info(*args, **kwargs):
     print("\033[34mℹ ", end="")
     print(*args, **kwargs)
@@ -54,4 +55,20 @@ def underline(*args, **kwargs):
 def inverse(*args, **kwargs):
     print("\033[7m", end="")
     print(*args, **kwargs)
+    print("\033[0m", end="")
+
+
+def setfg(r: float, g: float, b: float):
+    """Each of r,g,b must be between 0 and 1"""
+    color = 16 + 36 * round(5 * r) + 6 * round(5 * g) + round(5 * b)
+    print(f"\033[38;5;{color}m", end="")
+
+
+def setbg(r: float, g: float, b: float):
+    """Each of r,g,b must be between 0 and 1"""
+    color = 16 + 36 * round(5 * r) + 6 * round(5 * g) + round(5 * b)
+    print(f"\033[48;5;{color}m", end="")
+
+
+def clear():
     print("\033[0m", end="")
