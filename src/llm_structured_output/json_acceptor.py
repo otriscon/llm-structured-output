@@ -95,12 +95,18 @@ class WhitespaceAcceptor(TokenAcceptor):
             Use a custom matching trie to collapse all equivalent whitespace
             into one, saving time when selecting valid tokens.
             """
+            if len(self.text) >= WhitespaceAcceptor.MAX_WHITESPACE:
+                # Sometimes, LLMs try to run away with spaces when they don't know how to continue.
+                # It's important to prune here rather than in select() or advance() because those
+                # run the risk of cutting advance in the middle of a previously-selected token
+                # (e.g. a token consisting of 3 spaces in a row), which can lead to rejected
+                # generations. If the LLM triggers this often, consider whether the LLM is
+                # suitable for emitting JSON and/or whether the task is achievable and makes sense
+                # with the information provided in the prompt.
+                return super().prune(TokenTrie())
             return super().prune(WhitespaceAcceptor.prepare_trie(trie))
 
         def advance(self, char):
-            # Sometimes, LLMs try to run away with spaces when they don't know how to continue.
-            if len(self.text) > WhitespaceAcceptor.MAX_WHITESPACE:
-                return []
             return [WhitespaceAcceptor.Cursor(None, self.text + char)]
 
         def in_accepted_state(self):
