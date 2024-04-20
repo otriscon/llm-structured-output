@@ -82,17 +82,23 @@ class TokenTrie:
         Return a trie where the characters are mapped to other characters using a
         function. This is useful for example to collapse a tree into a smaller one
         by pruning or merging branches where the characters are equivalent for a
-        particular use case.
+        particular use case. The mapping function is passed a character to map, and
+        the recursion level in the tree, and it can return True to preserve the
+        branch of the tree as is, None to prune it, or a replacement character.
+        If the latter, the branch will be recursed upon and stored under the
+        replacement branch.
         """
         return self._map(map_fn, self.__class__())
 
-    def _map(self, map_fn: Callable[[str], str], mapped_trie: TokenTrie) -> TokenTrie:
+    def _map(
+        self, map_fn: Callable[[str, int], str], mapped_trie: TokenTrie, level: int = 0
+    ) -> TokenTrie:
         """
         Internal implementation of map()
         """
         mapped_trie.ids |= self.ids
         for char, child in self.children.items():
-            mapped_char = map_fn(char)
+            mapped_char = map_fn(char, level)
             if mapped_char is True:
                 # If the mapping function returns True, preserve the original branch
                 mapped_trie.children[char] = child
@@ -101,9 +107,13 @@ class TokenTrie:
                 pass
             else:
                 # Map the branch to a new character, e.g. merge several chars into one
-                mapped_child = mapped_trie.children.get(mapped_char, mapped_trie.__class__())
+                mapped_child = mapped_trie.children.get(
+                    mapped_char, mapped_trie.__class__()
+                )
                 # pylint: disable-next=protected-access
-                mapped_trie.children[mapped_char] = child._map(map_fn, mapped_child)
+                mapped_trie.children[mapped_char] = child._map(
+                    map_fn, mapped_child, level + 1
+                )
         return mapped_trie
 
     def _id_count(self) -> int:

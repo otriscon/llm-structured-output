@@ -180,7 +180,7 @@ class StringCharTokenTrie(TokenTrie):
         if isinstance(trie, StringCharTokenTrie):
             return trie
 
-        def _string_char_acceptor_collapse_fn(char):
+        def _string_char_acceptor_collapse_fn(char, _level):
             if char in ['"', "\\"]:
                 return True
             if char in StringCharAcceptor.INVALID_CHARS:
@@ -292,6 +292,29 @@ class StringAcceptor(StateMachineAcceptor):
                 return f"{self.text}👉"
 
 
+class NumberTokenTrie(TokenTrie):
+    """
+    Create a smaller trie by collapsing digit sequences.
+    """
+
+    @classmethod
+    def from_trie(cls, trie):
+        """
+        Create a NumberTokenTrie given a full trie.
+        """
+        if isinstance(trie, NumberTokenTrie):
+            return trie
+
+        def _number_acceptor_collapse_fn(char, level):
+            if char in "0123456789":
+                return "9"
+            # Only store branches that start with a digit.
+            return level > 0
+
+        # pylint: disable-next=protected-access
+        return trie._map(_number_acceptor_collapse_fn, StringCharTokenTrie())
+
+
 class NumberAcceptor(StateMachineAcceptor):
     """
     Accepts a well-formed JSON number
@@ -316,6 +339,19 @@ class NumberAcceptor(StateMachineAcceptor):
         9: [(DigitAcceptor, 9)],  # Exponential, more digits
         "$": [2, 3, 5, 9],
     }
+    _cached_tries = {}
+
+    @classmethod
+    def prepare_trie(cls, trie: TokenTrie):
+        """
+        Build a collapsed trie that reduces the search space for valid tokens.
+        """
+        trie_id = id(trie)
+        if trie_id in cls._cached_tries:
+            return cls._cached_tries[trie_id]
+        collapsed_trie = NumberTokenTrie().from_trie(trie)
+        cls._cached_tries[trie_id] = collapsed_trie
+        return collapsed_trie
 
     def __init__(self):
         super().__init__(self.STATES, 0, self.STATES["$"])
@@ -329,6 +365,13 @@ class NumberAcceptor(StateMachineAcceptor):
             super().__init__(acceptor)
             self.text = ""
             self.value = None
+
+        def prune(self, trie):
+            """
+            Use a custom matching trie to avoid an explosion of valid options that
+            are equivalent from the point of view of token matching.
+            """
+            return super().prune(NumberAcceptor.prepare_trie(trie))
 
         def complete_transition(self, transition_value, target_state, is_end_state):
             self.text += transition_value
@@ -486,6 +529,7 @@ def prepare_json_acceptor_tries(trie: TokenTrie):
     Pre-cache custom acceptor tries.
     """
     WhitespaceAcceptor.prepare_trie(trie)
+    NumberAcceptor.prepare_trie(trie)
     StringCharAcceptor.prepare_trie(trie)
     if '"' in trie.children:
         StringCharAcceptor.prepare_trie(trie.children['"'])

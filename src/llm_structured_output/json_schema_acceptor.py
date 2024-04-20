@@ -127,6 +127,16 @@ class NumberSchemaAcceptor(NumberAcceptor):
         super().__init__()
         self.schema = schema
         self.is_integer = schema["type"] == "integer"
+        self.requires_validation = any(
+            constraint in schema
+            for constraint in [
+                "minimum",
+                "exclusiveMinimum",
+                "maximum",
+                "exclusiveMaximum",
+                "multipleOf",
+            ]
+        )
 
     def validate_value(self, value):
         """
@@ -161,8 +171,22 @@ class NumberSchemaAcceptor(NumberAcceptor):
             super().__init__(acceptor)
             self.acceptor = acceptor
 
+        def prune(self, trie):
+            """
+            The parent class uses a collapsed trie and this means in the token-matching
+            phase we are always getting numbers made up of the digit "9", which prevents
+            correct validation. If we actually have anything to validate, we disable it.
+            """
+            if self.acceptor.requires_validation:
+                return super(NumberAcceptor.Cursor, self).prune(trie)
+            return super().prune(trie)
+
         def start_transition(self, transition_acceptor, target_state):
-            if self.acceptor.is_integer and self.current_state == 3 and target_state == 4:
+            if (
+                self.acceptor.is_integer
+                and self.current_state == 3
+                and target_state == 4
+            ):
                 return False
             return super().start_transition(transition_acceptor, target_state)
 
