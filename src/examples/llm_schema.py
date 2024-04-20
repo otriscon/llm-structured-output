@@ -45,6 +45,8 @@ class Model:
         self.tokenizer = None
         self.vocabulary = None
         self.eos_id = None
+        self._cached_prompt = None
+        self._cached_cache = None
 
     def load(self, model_path: str):
         """
@@ -368,14 +370,21 @@ class Model:
         temp: float = 0.0,
         seed: int = None,
         preemptive_batch_size: int = 0,
+        cache_prompt: bool = False,
     ):
         if seed is not None:
             mx.random.seed(seed)
 
         start_time = time.time_ns()
         prompt_tokens = self.tokenizer.encode_prompt(prompt)
-        logits, cache = self._evaluate_prompt(prompt_tokens)
-        mx.eval(logits) # So that we can more accurately reflect the prompt evaluation time.
+        logits, cache = self._evaluate_prompt(
+            prompt_tokens, self._cached_prompt, self._cached_cache
+        )
+        if cache_prompt:
+            self._cached_prompt = prompt_tokens
+            self._cached_cache = cache
+        # Eager eval to more accurately reflect the prompt evaluation time.
+        mx.eval(logits)
         prompt_time = time.time_ns() - start_time
         yield {
             "op": "evaluatedPrompt",

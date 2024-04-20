@@ -54,6 +54,7 @@ def run_eval_case(model, case, header, temp=None, seed=None, preemptive_batch_si
         temp=temp,
         seed=seed,
         preemptive_batch_size=preemptive_batch_size,
+        cache_prompt=True,
     ):
         if result["op"] == "evaluatedPrompt":
             prompt_tokens += result["token_count"]
