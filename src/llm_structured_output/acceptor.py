@@ -180,11 +180,9 @@ class TokenAcceptor:
 
         def in_accepted_state(self) -> bool:
             """
-            Returns True if the cursor has reached a final state.  Note that a cursor
-            in an accepted state can also continue to advance if other final states are
-            possible with additional input. A cursor that has reached a final state and
-            cannot advance further should return an empty iterable in advance().
-            Override.
+            Returns True if the cursor has reached a final state.
+            Typically, rather than override you should return an AcceptedState object
+            in the advance() method when the state is reached after consuming input.
             """
             return False
 
@@ -273,13 +271,25 @@ class TokenAcceptor:
             return bitmap
 
         def __repr__(self):
-            if self.in_accepted_state():
-                accepted = "✅"
-            else:
-                accepted = ""
-            return (
-                f"{accepted}{type(self).__qualname__}(value={repr(self.get_value())})"
-            )
+            return f"{type(self).__qualname__}(value={repr(self.get_value())})"
+
+
+class AcceptedState(TokenAcceptor.Cursor):
+    """
+    Holds a cursor that has reached the accepted state.
+    """
+
+    def __init__(self, cursor: TokenAcceptor.Cursor):
+        self.cursor = cursor
+
+    def in_accepted_state(self):
+        return True
+
+    def get_value(self):
+        return self.cursor.get_value()
+
+    def __repr__(self):
+        return f"✅{repr(self.cursor)}"
 
 
 class CharAcceptor(TokenAcceptor):
@@ -300,19 +310,12 @@ class CharAcceptor(TokenAcceptor):
             self.value = value
 
         def select(self, candidate_chars):
-            if self.value is not None:
-                return []
             return self.acceptor.charset
 
         def advance(self, char):
-            if self.in_accepted_state():
-                return []
             # Because we implemented the select method, we are guaranteed that the
             # char is in our accepted set.
-            return [CharAcceptor.Cursor(self.acceptor, char)]
-
-        def in_accepted_state(self):
-            return self.value is not None
+            return [AcceptedState(CharAcceptor.Cursor(self.acceptor, char))]
 
         def get_value(self):
             return self.value
@@ -344,17 +347,13 @@ class TextAcceptor(TokenAcceptor):
             self.pos = pos
 
         def select(self, candidate_chars):
-            if self.pos == len(self.acceptor.text):
-                return []
             return self.acceptor.text[self.pos]
 
         def advance(self, char):
-            # Because we implemented the select method, the character is guaranteed
-            # to match.
-            return [TextAcceptor.Cursor(self.acceptor, self.pos + 1)]
-
-        def in_accepted_state(self):
-            return self.pos == len(self.acceptor.text)
+            next_cursor = TextAcceptor.Cursor(self.acceptor, self.pos + 1)
+            if next_cursor.pos == len(self.acceptor.text):
+                return [AcceptedState(next_cursor)]
+            return [next_cursor]
 
         def get_value(self) -> str:
             head = self.acceptor.text[0 : self.pos]
@@ -400,43 +399,47 @@ class StateMachineAcceptor(TokenAcceptor):
             return []
         cursors = []
         for transition_acceptor, target_state in edges:
-            if cursor.can_attempt_transition(transition_acceptor, target_state):
+            if cursor.start_transition(transition_acceptor, target_state):
                 for transition_cursor in transition_acceptor.get_cursors():
                     copy = cursor.clone()
                     copy.transition_cursor = transition_cursor
                     copy.target_state = target_state
-                    cursors.append(copy)
-                    # Handle optional acceptors like WhitespaceAcceptor
+                    # Handle cursors that start in an accepted state,
+                    # e.g. EmptyTransition, WhitespaceAcceptor
                     if transition_cursor.in_accepted_state():
                         new_visited_states = visited_states + [cursor.current_state]
                         assert target_state not in new_visited_states  # Infinite loop
                         cursors += self._cascade_transition(
                             copy, new_visited_states, traversed_edges
                         )
+                    else:
+                        cursors.append(copy)
         return cursors
 
     def _cascade_transition(self, cursor, visited_states, traversed_edges):
         assert cursor.transition_cursor.in_accepted_state()
-        # Copy before validation to allow for side effects, e.g. storing the value
+        # Copy before validation to allow for cursor mutation, e.g. storing the transition_value
         cursors = []
         copy: StateMachineAcceptor.Cursor = cursor.clone()
-        if copy.can_complete_transition(
+        if copy.complete_transition(
             copy.transition_cursor.get_value(),
             copy.target_state,
             copy.target_state in copy.acceptor.end_states,
         ):
             copy.current_state = copy.target_state
             copy.target_state = None
-            copy.accept_history = copy.accept_history + [copy.transition_cursor]
+            copy.accept_history = copy.accept_history + [copy.transition_cursor.cursor]
             copy.transition_cursor = None
             # De-duplicate cursors that have reached the same state with the same value.
             # This prevents combinatorial explosion because of e.g. empty transitions.
             state_value = (copy.current_state, repr(copy.get_value()))
             if state_value not in traversed_edges:
                 traversed_edges.add(state_value)
-                if copy.in_accepted_state():
-                    cursors.append(copy)
-                cursors += self._find_transitions(copy, visited_states, traversed_edges)
+                if copy.current_state in self.end_states:
+                    cursors.append(AcceptedState(copy))
+                cursors += self._find_transitions(
+                    copy, visited_states, traversed_edges
+                )
         return cursors
 
     class Cursor(TokenAcceptor.Cursor):
@@ -473,31 +476,30 @@ class StateMachineAcceptor(TokenAcceptor):
                 copy = self.clone()
                 # pylint: disable-next=attribute-defined-outside-init
                 copy.transition_cursor = followup_cursor
-                next_cursors.append(copy)
                 if followup_cursor.in_accepted_state():
                     # pylint: disable-next=protected-access
                     next_cursors += self.acceptor._cascade_transition(
                         copy, [], traversed_edges
                     )
+                else:
+                    next_cursors.append(copy)
             return next_cursors
 
         # pylint: disable-next=unused-argument
-        def can_attempt_transition(self, transition_acceptor, target_state) -> bool:
+        def start_transition(self, transition_acceptor, target_state) -> bool:
             """
-            Override to prevent an edge to be traversed
+            Override to prevent an edge to be traversed.
             """
             return True
 
-        def can_complete_transition(  # pylint: disable-next=unused-argument
+        def complete_transition(  # pylint: disable-next=unused-argument
             self, transition_value, target_state, is_end_state
         ) -> bool:
             """
-            Override to perform additional checks on the acceptee
+            Override to perform additional checks on the acceptee and mutate the cursor
+            with the transition_value as appropriate.
             """
             return True
-
-        def in_accepted_state(self) -> bool:
-            return self.current_state in self.acceptor.end_states
 
         def get_value(self):
             value = [
@@ -509,10 +511,6 @@ class StateMachineAcceptor(TokenAcceptor):
             return value
 
         def __repr__(self) -> str:
-            if self.in_accepted_state():
-                accepted = "✅"
-            else:
-                accepted = ""
             if self.transition_cursor is not None:
                 transition_cursor = repr(self.transition_cursor)
                 target_state = self.target_state
@@ -537,14 +535,13 @@ class StateMachineAcceptor(TokenAcceptor):
                             ]
                         )
                     )
-                    + "⬅️  "
                 )
             else:
                 history = ""
             state = (
-                f"{history}{self.current_state}=>{target_state} ➡️ {transition_cursor}"
+                f"{history} {self.current_state}⇒{target_state}  {transition_cursor}"
             )
-            return f"{accepted}{type(self).__qualname__}({state})"
+            return f"{type(self).__qualname__}({state})"
 
     class EmptyTransitionAcceptor(TokenAcceptor):
         """
@@ -554,16 +551,13 @@ class StateMachineAcceptor(TokenAcceptor):
         consume input.
         """
 
+        def get_cursors(self):
+            return [AcceptedState(self.Cursor(self))]
+
         class Cursor(TokenAcceptor.Cursor):
             """
             Cursor for EmptyTransitionAcceptor
             """
-
-            def select(self, candidate_chars):
-                return set()
-
-            def in_accepted_state(self):
-                return True
 
             def get_value(self):
                 return ""
@@ -607,33 +601,23 @@ class WaitForAcceptor(TokenAcceptor):
             self.acceptor = acceptor
             if cursors:
                 self.cursors = cursors
-                self.accepted_cursor = next(
-                    (cursor for cursor in cursors if cursor.in_accepted_state()), None
-                )
             else:
                 self.cursors = acceptor.wait_for_acceptor.get_cursors()
-                self.accepted_cursor = None
 
         def matches_all(self):
-            return not self.in_accepted_state()
+            return True
 
         def select(self, candidate_chars):
-            if self.in_accepted_state():
-                return set()
-            else:
-                return candidate_chars
+            return candidate_chars
 
         def advance(self, char):
-            if self.in_accepted_state():
-                return []
             cursors = TokenAcceptor.advance_all(self.cursors, char)
+            accepted_cursor = next(
+                (cursor for cursor in cursors if cursor.in_accepted_state()), None
+            )
+            if accepted_cursor:
+                return [AcceptedState(accepted_cursor)]
             return [WaitForAcceptor.Cursor(self.acceptor, cursors)]
 
-        def in_accepted_state(self):
-            return self.accepted_cursor is not None
-
         def get_value(self):
-            if self.accepted_cursor is not None:
-                return self.accepted_cursor.get_value()
-            else:
-                return f"Waiting for {repr(self.cursors)}"
+            return f"Waiting for {repr(self.cursors)}"

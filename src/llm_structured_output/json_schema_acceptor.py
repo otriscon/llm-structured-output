@@ -100,7 +100,7 @@ class StringSchemaAcceptor(StringAcceptor):
             super().__init__(acceptor)
             self.acceptor = acceptor
 
-        def can_attempt_transition(self, transition_acceptor, target_state):
+        def start_transition(self, transition_acceptor, target_state):
             if self.current_state == 1:
                 if target_state == "$":
                     return self.length >= self.acceptor.min_length()
@@ -108,8 +108,8 @@ class StringSchemaAcceptor(StringAcceptor):
                     return self.length < self.acceptor.max_length()
             return True
 
-        def can_complete_transition(self, transition_value, target_state, is_end_state):
-            if not super().can_complete_transition(
+        def complete_transition(self, transition_value, target_state, is_end_state):
+            if not super().complete_transition(
                 transition_value, target_state, is_end_state
             ):
                 return False
@@ -161,8 +161,8 @@ class NumberSchemaAcceptor(NumberAcceptor):
             super().__init__(acceptor)
             self.acceptor = acceptor
 
-        def can_complete_transition(self, transition_value, target_state, is_end_state):
-            if not super().can_complete_transition(
+        def complete_transition(self, transition_value, target_state, is_end_state):
+            if not super().complete_transition(
                 transition_value, target_state, is_end_state
             ):
                 return False
@@ -240,7 +240,7 @@ class ArraySchemaAcceptor(ArrayAcceptor):
             super().__init__(acceptor)
             self.acceptor = acceptor
 
-        def can_attempt_transition(self, transition_acceptor, target_state) -> bool:
+        def start_transition(self, transition_acceptor, target_state) -> bool:
             if self.current_state == 4 and target_state == 2:
                 return len(self.value) < self.acceptor.max_items()
             if target_state == "$":
@@ -344,7 +344,7 @@ class ObjectSchemaAcceptor(ObjectAcceptor):
             super().__init__(acceptor)
             self.acceptor = acceptor
 
-        def can_attempt_transition(self, transition_acceptor, target_state) -> bool:
+        def start_transition(self, transition_acceptor, target_state) -> bool:
             if target_state == "$":
                 return all(
                     prop_name in self.value

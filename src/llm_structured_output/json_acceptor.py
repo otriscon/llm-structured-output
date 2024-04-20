@@ -6,6 +6,7 @@ import json
 
 from .acceptor import (
     TokenAcceptor,
+    AcceptedState,
     CharAcceptor,
     StateMachineAcceptor,
     SequenceAcceptor,
@@ -79,6 +80,11 @@ class WhitespaceAcceptor(TokenAcceptor):
         cls._cached_tries[trie_id] = collapsed_trie
         return collapsed_trie
 
+    def get_cursors(self):
+        # Whitespace is optional
+        cursor = WhitespaceAcceptor.Cursor(self)
+        return [cursor, AcceptedState(cursor)]
+
     class Cursor(TokenAcceptor.Cursor):
         """
         Cursor for WhitespaceAcceptor
@@ -107,10 +113,9 @@ class WhitespaceAcceptor(TokenAcceptor):
             return super().prune(WhitespaceAcceptor.prepare_trie(trie))
 
         def advance(self, char):
-            return [WhitespaceAcceptor.Cursor(None, self.text + char)]
-
-        def in_accepted_state(self):
-            return True
+            # More whitespace is optional
+            next_cursor = WhitespaceAcceptor.Cursor(None, self.text + char)
+            return [next_cursor, AcceptedState(next_cursor)]
 
         def get_value(self):
             return self.text
@@ -133,7 +138,7 @@ class BooleanAcceptor(StateMachineAcceptor):
             super().__init__(acceptor)
             self.value = None
 
-        def can_complete_transition(self, transition_value, target_state, is_end_state):
+        def complete_transition(self, transition_value, target_state, is_end_state):
             if is_end_state:
                 if transition_value == "true":
                     self.value = True
@@ -224,8 +229,6 @@ class StringCharAcceptor(TokenAcceptor):
             self.value = value
 
         def select(self, candidate_chars):
-            if self.in_accepted_state():
-                return []
             return candidate_chars - StringCharAcceptor.INVALID_CHARS
 
         def prune(self, trie):
@@ -236,12 +239,7 @@ class StringCharAcceptor(TokenAcceptor):
             return super().prune(StringCharAcceptor.prepare_trie(trie))
 
         def advance(self, char):
-            if self.in_accepted_state():
-                return []
-            return [StringCharAcceptor.Cursor(self.acceptor, char)]
-
-        def in_accepted_state(self):
-            return self.value is not None
+            return [AcceptedState(StringCharAcceptor.Cursor(self.acceptor, char))]
 
         def get_value(self):
             return self.value
@@ -279,7 +277,7 @@ class StringAcceptor(StateMachineAcceptor):
             self.length = 0
             self.value = None
 
-        def can_complete_transition(self, transition_value, target_state, is_end_state):
+        def complete_transition(self, transition_value, target_state, is_end_state):
             self.text += transition_value
             if target_state == 1 and self.current_state != 0:
                 self.length += 1
@@ -332,7 +330,7 @@ class NumberAcceptor(StateMachineAcceptor):
             self.text = ""
             self.value = None
 
-        def can_complete_transition(self, transition_value, target_state, is_end_state):
+        def complete_transition(self, transition_value, target_state, is_end_state):
             self.text += transition_value
             if is_end_state:
                 self.value = json.loads(self.text)
@@ -373,7 +371,7 @@ class ArrayAcceptor(StateMachineAcceptor):
             super().__init__(acceptor)
             self.value = []
 
-        def can_complete_transition(
+        def complete_transition(
             self, transition_value, target_state, is_end_state
         ) -> bool:
             if self.current_state == 3:
@@ -410,7 +408,7 @@ class ObjectAcceptor(StateMachineAcceptor):
             super().__init__(acceptor)
             self.value = {}
 
-        def can_complete_transition(
+        def complete_transition(
             self, transition_value, target_state, is_end_state
         ) -> bool:
             if self.current_state == 3:
@@ -447,7 +445,7 @@ class ObjectAcceptor(StateMachineAcceptor):
                 self.prop_name = None
                 self.prop_value = None
 
-            def can_complete_transition(
+            def complete_transition(
                 self, transition_value, target_state, is_end_state
             ) -> bool:
                 if target_state == 1:
