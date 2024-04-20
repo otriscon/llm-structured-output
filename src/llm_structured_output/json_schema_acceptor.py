@@ -161,6 +161,11 @@ class NumberSchemaAcceptor(NumberAcceptor):
             super().__init__(acceptor)
             self.acceptor = acceptor
 
+        def start_transition(self, transition_acceptor, target_state):
+            if self.acceptor.is_integer and self.current_state == 3 and target_state == 4:
+                return False
+            return super().start_transition(transition_acceptor, target_state)
+
         def complete_transition(self, transition_value, target_state, is_end_state):
             if not super().complete_transition(
                 transition_value, target_state, is_end_state
