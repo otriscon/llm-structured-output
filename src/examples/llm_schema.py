@@ -119,12 +119,33 @@ class Model:
         ]
         debug("TOP TOKENS:", top_tokens)
 
-    def _sample(self, logits, temp):
+    def _sample(self, logits, temp: float = 0):
         if temp == 0:
             result = mx.argmax(logits, axis=-1)
         else:
             result = mx.random.categorical(logits * (1 / temp))
         return result.item()
+
+    def _sample_with_bias(
+        self, logits, temp: float = 0, token_acceptor=None, lazy_bias: bool = True
+    ):
+        if token_acceptor is None:
+            return self._sample(logits, temp)
+
+        if lazy_bias:
+            token = self._sample(logits, temp)
+            try:
+                token_acceptor.advance_token(token)
+                return token
+            except JsonSchemaAcceptorDriver.TokenRejected:
+                pass
+
+        accepted_token_bitmap = token_acceptor.select_valid_tokens()
+        if not accepted_token_bitmap:
+            raise RejectedCompletion()
+        token = self._sample(bias_logits(mx, logits, accepted_token_bitmap), temp)
+        token_acceptor.advance_token(token)
+        return token
 
     def generate_without_schema(self, logits, cache, temp: Optional[float] = 0.0):
         """
@@ -141,13 +162,8 @@ class Model:
         self, logits, cache, token_acceptor, temp: Optional[float] = 0.0
     ):
         while True:
-            accepted_token_bitmap = token_acceptor.select_valid_tokens()
-            if not accepted_token_bitmap:
-                raise RejectedCompletion()
-            logits = bias_logits(mx, logits[0, -1, :], accepted_token_bitmap)
-            tokens = [self._sample(logits, temp)]
+            tokens = [self._sample_with_bias(logits[0, -1, :], temp, token_acceptor)]
             yield tokens
-            token_acceptor.advance_token(self._decode(tokens))
             if tokens[-1] == self.eos_id:
                 break
             logits, cache = self.model(mx.array(tokens)[None], cache)
@@ -178,7 +194,7 @@ class Model:
         first_token = self._sample(first_token_logits, temp)
         tokens = [first_token]
         yield tokens
-        token_acceptor.advance_token(self._decode(tokens))
+        token_acceptor.advance_token(first_token)
         accepted_token_bitmap = token_acceptor.select_valid_tokens()
 
         while True:
@@ -211,7 +227,7 @@ class Model:
                 yield tokens
                 break
 
-            token_acceptor.advance_token(self._decode([first_token]))
+            token_acceptor.advance_token(first_token)
             accepted_token_bitmap = token_acceptor.select_valid_tokens()
             if not accepted_token_bitmap:
                 raise RejectedCompletion()
@@ -229,7 +245,7 @@ class Model:
                 second_token = self._sample(second_token_logits, temp)
                 tokens.append(second_token)
 
-                token_acceptor.advance_token(self._decode([second_token]))
+                token_acceptor.advance_token(second_token)
                 accepted_token_bitmap = token_acceptor.select_valid_tokens()
 
                 # Select the accepted generation in the cache, restoring it to batch dimension 1.
@@ -263,8 +279,17 @@ class Model:
         first_token = self._sample(first_token_logits, temp)
         tokens = [first_token]
         yield tokens
-        token_acceptor.advance_token(self._decode(tokens))
+        token_acceptor.advance_token(first_token)
         accepted_token_bitmap = token_acceptor.select_valid_tokens()
+
+        # Re-shape the cache to match the constant batch size.
+        cache = [
+            (
+                mx.array([layer_key_cache[0]] * max_batch_size),
+                mx.array([layer_value_cache[0]] * max_batch_size),
+            )
+            for layer_key_cache, layer_value_cache in cache
+        ]
 
         while True:
             last_token = tokens[-1]
@@ -291,7 +316,7 @@ class Model:
                 yield tokens
                 break
 
-            token_acceptor.advance_token(self._decode([first_token]))
+            token_acceptor.advance_token(first_token)
             accepted_token_bitmap = token_acceptor.select_valid_tokens()
             if not accepted_token_bitmap:
                 raise RejectedCompletion()
@@ -309,7 +334,7 @@ class Model:
                 second_token = self._sample(second_token_logits, temp)
                 tokens.append(second_token)
 
-                token_acceptor.advance_token(self._decode([second_token]))
+                token_acceptor.advance_token(second_token)
                 accepted_token_bitmap = token_acceptor.select_valid_tokens()
 
                 # Select the accepted generation in the cache for the next round.

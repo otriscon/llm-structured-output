@@ -86,7 +86,7 @@ def main():
         setbg(reluctance, 0.8 * (1 - reluctance), 0)
         setfg(1, 1, 1)
         print(text, end="")
-        token_acceptor.advance_token(text)
+        token_acceptor.advance_token(token)
     clear()
     print()
 

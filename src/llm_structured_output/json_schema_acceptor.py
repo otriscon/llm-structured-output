@@ -614,6 +614,11 @@ class JsonSchemaAcceptorDriver:
     Utility class to drive a JsonSchemaAcceptor
     """
 
+    class TokenRejected(Exception):
+        """
+        Raised when the token cannot advance any of the current acceptors.
+        """
+
     def __init__(
         self,
         schema: dict,
@@ -626,6 +631,7 @@ class JsonSchemaAcceptorDriver:
         vocabulary = [
             (token, fragment) for token, fragment in vocabulary if token != eos_id
         ]
+        self.vocabulary = dict(vocabulary)
         self.trie = TokenAcceptor.prepare_vocabulary(vocabulary)
         prepare_json_acceptor_tries(self.trie)
         self.eos_id = eos_id
@@ -668,24 +674,38 @@ class JsonSchemaAcceptorDriver:
         """
         Advance the state(s) of the acceptor with the chosen token.
         """
-        for char in token:
-            self.cursors = TokenAcceptor.advance_all(self.cursors, char)
-            if not self.cursors:
-                return False
-        return True
+        if token == self.eos_id:
+            if not self.in_accepted_state():
+                raise JsonSchemaAcceptorDriver.TokenRejected()
+            self.cursors = []
+            return
+        fragment = self.vocabulary[token]
+        cursors = self.cursors
+        for char in fragment:
+            cursors = TokenAcceptor.advance_all(cursors, char)
+            if not cursors:
+                raise JsonSchemaAcceptorDriver.TokenRejected()
+        self.cursors = cursors
 
     def debug_advance_token(self, token, debug_output_fn=print):
         """
         Same as advance_token() but prints debug information.
         """
-        for char in token:
-            self.cursors = TokenAcceptor.advance_all(self.cursors, char)
-            ncursors = len(self.cursors)
+        if token == self.eos_id:
+            if not self.in_accepted_state():
+                raise JsonSchemaAcceptorDriver.TokenRejected()
+            self.cursors = []
+            return
+        fragment = self.vocabulary[token]
+        cursors = self.cursors
+        for char in fragment:
+            cursors = TokenAcceptor.advance_all(cursors, char)
+            ncursors = len(cursors)
             if ncursors > self.debug_max_cursors:
                 self.debug_max_cursors = ncursors
             debug_output_fn(f"ADVANCE char={repr(char)} cursors({ncursors})")
             if ncursors:
-                debug_output_fn("  " + "\n  ".join(repr(c) for c in self.cursors))
+                debug_output_fn("  " + "\n  ".join(repr(c) for c in cursors))
             if ncursors == 0:
-                return False
-        return True
+                raise JsonSchemaAcceptorDriver.TokenRejected()
+        self.cursors = cursors

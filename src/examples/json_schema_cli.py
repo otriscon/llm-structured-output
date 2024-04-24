@@ -44,20 +44,28 @@ def main():  # pylint: disable=missing-function-docstring
         input_json = args.json
 
     # For test purposes, just split the input into groups of 3 letters.
-    tokens = [input_json[i : i + 3] for i in range(0, len(input_json), 3)]
-    eos_token = chr(3)
-    vocabulary = enumerate([eos_token] + [*set(tokens)])
+    fragments = [input_json[i : i + 3] for i in range(0, len(input_json), 3)]
+    eos_fragment = chr(3)
+    eos_token = 0
+    vocabulary = list(enumerate([eos_fragment] + [*set(fragments)]))
+    reverse_vocabulary = dict((f, i) for i, f in vocabulary)
+    tokens = [reverse_vocabulary[f] for f in fragments]
 
-    acceptor = JsonSchemaAcceptorDriver(schema, vocabulary, eos_id=0)
+    acceptor = JsonSchemaAcceptorDriver(schema, vocabulary, eos_id=eos_token)
     fail = False
     for token in tokens:
         print(token, end="")
-        if not acceptor.debug_advance_token(token):
+        try:
+            acceptor.debug_advance_token(token)
+        except acceptor.TokenRejected:
             fail = True
             break
     if not fail:
         print("<eos>")
-        fail = acceptor.advance_token(eos_token)
+        try:
+            fail = acceptor.advance_token(eos_token)
+        except acceptor.TokenRejected:
+            fail = True
     if fail:
         print("[FAIL]")
         result = 1

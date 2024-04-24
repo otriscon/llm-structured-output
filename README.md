@@ -173,17 +173,18 @@ while tokens[-1] != eos_id:
     logits = bias_logits(mx, logits[0, -1, :], accepted_token_bitmap)
 
     # Sample as usual, e.g.:
-    tokens = [mx.argmax(logits, axis=-1).item()]
+    token = mx.argmax(logits, axis=-1).item()
 
-    if tokens[0] == eos_id:
+    if token == eos_id:
       break
 
-    # Decode the tokens as you go to be able to advance the acceptor.
+    # Store or use the generated token.
+    tokens = [token]
     text = tokenizer_helper.no_strip_decode(tokens)
     print(text, end="")
 
     # Advance the acceptor to the next state.
-    token_acceptor.advance_token(text)
+    token_acceptor.advance_token(token)
 ```
 
 ## A note about guarantees on the output
