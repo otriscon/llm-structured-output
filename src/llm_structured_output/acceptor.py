@@ -437,9 +437,7 @@ class StateMachineAcceptor(TokenAcceptor):
                 traversed_edges.add(state_value)
                 if copy.current_state in self.end_states:
                     cursors.append(AcceptedState(copy))
-                cursors += self._find_transitions(
-                    copy, visited_states, traversed_edges
-                )
+                cursors += self._find_transitions(copy, visited_states, traversed_edges)
         return cursors
 
     class Cursor(TokenAcceptor.Cursor):
@@ -526,14 +524,12 @@ class StateMachineAcceptor(TokenAcceptor):
                         accept_history += accepted_transition_cursor.accept_history
                     else:
                         accept_history.append(accepted_transition_cursor)
-                history = (
-                    repr(
-                        "".join(
-                            [
-                                str(accepted_transition_cursor.get_value())
-                                for accepted_transition_cursor in accept_history
-                            ]
-                        )
+                history = repr(
+                    "".join(
+                        [
+                            str(accepted_transition_cursor.get_value())
+                            for accepted_transition_cursor in accept_history
+                        ]
                     )
                 )
             else:
@@ -607,16 +603,13 @@ class WaitForAcceptor(TokenAcceptor):
         def matches_all(self):
             return True
 
-        def select(self, candidate_chars):
-            return candidate_chars
-
         def advance(self, char):
             cursors = TokenAcceptor.advance_all(self.cursors, char)
-            accepted_cursor = next(
-                (cursor for cursor in cursors if cursor.in_accepted_state()), None
-            )
-            if accepted_cursor:
-                return [AcceptedState(accepted_cursor)]
+            accepted_cursors = [
+                cursor for cursor in cursors if cursor.in_accepted_state()
+            ]
+            if accepted_cursors:
+                return accepted_cursors
             return [WaitForAcceptor.Cursor(self.acceptor, cursors)]
 
         def get_value(self):
