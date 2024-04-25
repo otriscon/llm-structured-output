@@ -159,7 +159,8 @@ model, tokenizer = load(MODEL_PATH)
 # Instantiate a token acceptor
 tokenizer_helper = HuggingfaceTokenizerHelper(tokenizer)
 vocabulary, eos_id = tokenizer_helper.extract_vocabulary()
-token_acceptor = JsonSchemaAcceptorDriver(SCHEMA, vocabulary, eos_id)
+token_acceptor_factory = JsonSchemaAcceptorDriver.driver_factory_for_model(vocabulary, eos_id)
+token_acceptor = token_acceptor_factory(SCHEMA)
 
 cache = None
 tokens = tokenizer_helper.encode_prompt(PROMPT)

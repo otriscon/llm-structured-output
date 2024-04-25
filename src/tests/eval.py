@@ -46,6 +46,7 @@ def run_eval_case(model, case, header, temp=None, seed=None, preemptive_batch_si
     prompt_tokens = 0
     completion_tokens = 0
     completion_time = 0
+    start_time = time.time_ns()
 
     for result in model.completion(
         messages,
@@ -70,10 +71,11 @@ def run_eval_case(model, case, header, temp=None, seed=None, preemptive_batch_si
             debug(f"{result=}")
             assert False
 
+    total_time = (time.time_ns() - start_time) / 1e6
     prompt_tps = prompt_tokens / prompt_time * 1e3
     completion_tps = completion_tokens / completion_time * 1e3
     info(
-        f"{header} {prompt_tokens=} {prompt_tps=:.02f} {completion_tokens=} {completion_tps=:.02f}"
+        f"{header} {prompt_tokens=} {prompt_tps=:.02f} {completion_tokens=} {completion_tps=:.02f} {prompt_time=:.02f} {completion_time=:.02f} {total_time=:.02f}"
     )
 
     completion = json.loads(content)["function_call"]

@@ -45,6 +45,7 @@ class Model:
         self.tokenizer = None
         self.vocabulary = None
         self.eos_id = None
+        self.json_schema_acceptor_driver_factory = None
         self._cached_prompt = None
         self._cached_cache = None
 
@@ -55,6 +56,11 @@ class Model:
         self.model, tokenizer = load(model_path)
         self.tokenizer = HuggingfaceTokenizerHelper(tokenizer)
         self.vocabulary, self.eos_id = self.tokenizer.extract_vocabulary()
+        self.json_schema_acceptor_driver_factory = (
+            JsonSchemaAcceptorDriver.driver_factory_for_model(
+                self.vocabulary, self.eos_id
+            )
+        )
 
     def _run_model(self, inputs: mx.array, cache=None):
         """
@@ -420,10 +426,8 @@ class Model:
         }
 
         if schema:
-            token_acceptor = JsonSchemaAcceptorDriver(
+            token_acceptor = self.json_schema_acceptor_driver_factory(
                 schema,
-                self.vocabulary,
-                self.eos_id,
                 is_encapsulated_json=encapsulated,
             )
             if preemptive_batch_size > 0:

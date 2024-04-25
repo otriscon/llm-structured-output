@@ -51,7 +51,8 @@ def main():  # pylint: disable=missing-function-docstring
     reverse_vocabulary = dict((f, i) for i, f in vocabulary)
     tokens = [reverse_vocabulary[f] for f in fragments]
 
-    acceptor = JsonSchemaAcceptorDriver(schema, vocabulary, eos_id=eos_token)
+    acceptor_factory = JsonSchemaAcceptorDriver.driver_factory_for_model(vocabulary, eos_id=eos_token)
+    acceptor = acceptor_factory(schema)
     fail = False
     for token in tokens:
         print(token, end="")

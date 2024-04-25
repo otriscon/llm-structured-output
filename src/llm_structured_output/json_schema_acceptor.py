@@ -26,6 +26,7 @@ from .json_acceptor import (
     ObjectAcceptor,
     prepare_json_acceptor_tries,
 )
+from .util.tokentrie import TokenTrie
 
 
 class SchemaNotImplementedError(Exception):
@@ -619,21 +620,41 @@ class JsonSchemaAcceptorDriver:
         Raised when the token cannot advance any of the current acceptors.
         """
 
-    def __init__(
-        self,
-        schema: dict,
+    @classmethod
+    def driver_factory_for_model(
+        cls,
         vocabulary: Iterable[Tuple[int, str]],
         eos_id: int,
-        is_encapsulated_json: bool = False,
-    ):
+    ) -> callable:
+        """
+        Sets up the data structures (slow, one time) and returns a factory function
+        that creates JsonSchemaAcceptorDriver objects for the model.
+        """
         # Make sure the eos token is removed.
         # Ideally, the caller should not pass any special tokens (bos, eos, unk, pad, ...)
-        vocabulary = [
+        vocabulary_list = [
             (token, fragment) for token, fragment in vocabulary if token != eos_id
         ]
-        self.vocabulary = dict(vocabulary)
-        self.trie = TokenAcceptor.prepare_vocabulary(vocabulary)
-        prepare_json_acceptor_tries(self.trie)
+        vocabulary_dict = dict(vocabulary_list)
+        vocabulary_trie = TokenAcceptor.prepare_vocabulary(vocabulary)
+        prepare_json_acceptor_tries(vocabulary_trie)
+
+        def _factory(schema: dict, is_encapsulated_json: bool = False) -> JsonSchemaAcceptorDriver:
+            return JsonSchemaAcceptorDriver(
+                vocabulary_dict, vocabulary_trie, eos_id, schema, is_encapsulated_json
+            )
+        return _factory
+
+    def __init__(
+        self,
+        vocabulary_dict: dict[int ,str],
+        vocabulary_trie: TokenTrie,
+        eos_id: int,
+        schema: dict,
+        is_encapsulated_json: bool = False,
+    ):
+        self.vocabulary = vocabulary_dict
+        self.trie = vocabulary_trie
         self.eos_id = eos_id
         if is_encapsulated_json:
             self.acceptor = EncapsulatedJsonSchemaAcceptor(schema)

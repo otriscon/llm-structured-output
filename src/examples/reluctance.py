@@ -68,7 +68,9 @@ def main():
 
     tokenizer_helper = HuggingfaceTokenizerHelper(tokenizer)
     vocabulary, eos_id = tokenizer_helper.extract_vocabulary()
-    token_acceptor = JsonSchemaAcceptorDriver(schema, vocabulary, eos_id)
+    token_acceptor_factory = JsonSchemaAcceptorDriver.driver_factory_for_model(vocabulary, eos_id)
+    token_acceptor = token_acceptor_factory(schema)
+
 
     info("Starting generation...")
     cache = None
