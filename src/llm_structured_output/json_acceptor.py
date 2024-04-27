@@ -17,17 +17,18 @@ from .util.tokentrie import TokenTrie
 
 class WhitespaceTokenTrie(TokenTrie):
     """
-    Create a smaller trie by collapsing all whitespace to a single one while
-    keeping the token ids. Since all whitespace is equivalent in JSON, tokens
-    that only differ in the leading amount of whitesspace are equivalent from
-    an semantic point of view.
+    Create a smaller trie by collapsing all whitespace to a single symbol.
+    Since all whitespace is equivalent in JSON, tokens that only differ in
+    the type of whitespace are equivalent from a semantic point of view.
 
-    For example, the tokens "\n" and "  " are both mapped to the same node as
-    token " ", which now contains both their ids in its set of ids.
+    For example, the tokens "\n\n\n", "\t\t\t" and "  " are all mapped to the same
+    node root -> " " -> " " -> " ", which now contains the token ids of all three
+    tokens in its set of ids.
 
     This allows us to reduce the number of equivalent branches we explore when
     finding valid tokens. Note that this doesn't limit the possible output of
-    an LLM, since the token ids are kept in the trie.
+    an LLM, since the token ids are kept in the trie and thus matched as valid,
+    and are accepted by the acceptor.
     """
 
     @classmethod
@@ -37,23 +38,18 @@ class WhitespaceTokenTrie(TokenTrie):
         """
         if isinstance(trie, WhitespaceTokenTrie):
             return trie
-        collapsed_trie = WhitespaceTokenTrie()
-        for char, child in trie.children.items():
-            # The trie doesn't need to contain tokens that don't start with whitespace,
-            # since they won't be selected by the WhitespaceAcceptor.
+
+        def _whitespace_collapse_fn(char, level):
             if char in whitespace_charset:
-                for token, ids in child.dfs():
-                    non_whitespace_index = next(
-                        (
-                            i
-                            for i, char in enumerate(token)
-                            if char not in whitespace_charset
-                        ),
-                        len(token),
-                    )
-                    collapsed_token = " " + token[non_whitespace_index:]
-                    collapsed_trie.insert_ids(collapsed_token, ids)
-        return collapsed_trie
+                return " "
+            if level == 0:
+                # The trie doesn't need to contain tokens that don't start with whitespace,
+                # since they won't be selected by the WhitespaceAcceptor.
+                return None
+            return True
+
+        # pylint: disable-next=protected-access
+        return trie._map(_whitespace_collapse_fn, WhitespaceTokenTrie())
 
 
 class WhitespaceAcceptor(TokenAcceptor):
@@ -62,7 +58,6 @@ class WhitespaceAcceptor(TokenAcceptor):
     """
 
     WHITESPACE = " \n\r\t"
-    MAX_WHITESPACE = 40
 
     _cached_tries = {}
 
@@ -80,6 +75,9 @@ class WhitespaceAcceptor(TokenAcceptor):
         cls._cached_tries[trie_id] = collapsed_trie
         return collapsed_trie
 
+    def __init__(self, max_whitespace: int = 40):
+        self.max_whitespace = max_whitespace
+
     def get_cursors(self):
         # Whitespace is optional
         cursor = WhitespaceAcceptor.Cursor(self)
@@ -91,9 +89,13 @@ class WhitespaceAcceptor(TokenAcceptor):
         """
 
         def __init__(self, acceptor, text=""):
+            self.acceptor = acceptor
             self.text = text
+            self.length_exceeded = len(text) > self.acceptor.max_whitespace
 
         def select(self, candidate_chars):
+            if self.length_exceeded:
+                return set()
             return WhitespaceAcceptor.WHITESPACE
 
         def prune(self, trie):
@@ -101,20 +103,18 @@ class WhitespaceAcceptor(TokenAcceptor):
             Use a custom matching trie to collapse all equivalent whitespace
             into one, saving time when selecting valid tokens.
             """
-            if len(self.text) >= WhitespaceAcceptor.MAX_WHITESPACE:
-                # Sometimes, LLMs try to run away with spaces when they don't know how to continue.
-                # It's important to prune here rather than in select() or advance() because those
-                # run the risk of cutting advance in the middle of a previously-selected token
-                # (e.g. a token consisting of 3 spaces in a row), which can lead to rejected
-                # generations. If the LLM triggers this often, consider whether the LLM is
-                # suitable for emitting JSON and/or whether the task is achievable and makes sense
-                # with the information provided in the prompt.
-                return super().prune(TokenTrie())
-            return super().prune(WhitespaceAcceptor.prepare_trie(trie))
+            collapsed_trie = WhitespaceAcceptor.prepare_trie(trie)
+            return super().prune(collapsed_trie)
 
         def advance(self, char):
+            # Sometimes, LLMs try to run away with spaces when they don't know how to continue.
+            # If the LLM triggers this often, consider whether the LLM is suitable for emitting
+            # JSON and/or whether the task is achievable and makes sense with the information
+            # provided in the prompt.
+            if self.length_exceeded:
+                return []
+            next_cursor = WhitespaceAcceptor.Cursor(self.acceptor, self.text + char)
             # More whitespace is optional
-            next_cursor = WhitespaceAcceptor.Cursor(None, self.text + char)
             return [next_cursor, AcceptedState(next_cursor)]
 
         def get_value(self):

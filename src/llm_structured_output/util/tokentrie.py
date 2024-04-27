@@ -77,7 +77,7 @@ class TokenTrie:
         for char, child in self.children.items():
             yield from child.dfs(prefix + char)
 
-    def map(self, map_fn) -> TokenTrie:
+    def map(self, map_fn: Callable[[str, int], str]) -> TokenTrie:
         """
         Return a trie where the characters are mapped to other characters using a
         function. This is useful for example to collapse a tree into a smaller one
@@ -122,6 +122,12 @@ class TokenTrie:
         """
         # FUTURE: self.ids.bit_count() available from Python 3.10 is said to be 6x faster
         return bin(self.ids).count("1")
+
+    def max_depth(self) -> int:
+        """
+        Return the max depth of any branch on the trie, i.e. the length of the longest token.
+        """
+        return max((child.max_depth() for child in self.children.values()), default=0) + 1
 
     def stats(self) -> TokenTrieStats:
         """
