@@ -99,7 +99,9 @@ class Model:
         if prior_prompt:
             i = 0
             for i, t in enumerate(prior_prompt):
-                if len(prompt) < i or prompt[i] != t:
+                # We need to leave at least one token to evaluate because we don't
+                # save the past logits.
+                if i >= len(prompt) - 1 or prompt[i] != t:
                     break
             cache = [
                 (
