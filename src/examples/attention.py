@@ -21,6 +21,8 @@ from llm_structured_output import (
 )
 from llm_structured_output.util.output import info, warning
 
+from .reusable_kv_cache import ReusableKVCache
+
 
 def calc_prompt_perplexity(logits, prompt: list[int]):
     """
@@ -58,7 +60,7 @@ class ObservedLLM:
         self.token_acceptor_factory = JsonSchemaAcceptorDriver.driver_factory_for_model(
             self.vocabulary, self.eos_id
         )
-        self.cache = None
+        self.cache = ReusableKVCache.for_model(self.model)
         self.tokens = []
         self.fragments = []
         self.layer_attention_scores = []
@@ -109,18 +111,9 @@ class ObservedLLM:
         for i, t in enumerate(prior_tokens):
             if i >= len(self.tokens) - 1 or self.tokens[i] != t:
                 break
-        if i:
-            self.cache = [
-                (
-                    layer_key_cache[:, :, :i, :],
-                    layer_value_cache[:, :, :i, :],
-                )
-                for layer_key_cache, layer_value_cache in self.cache
-            ]
-            new_tokens = self.tokens[i:]
-        else:
-            self.cache = None
-            new_tokens = self.tokens
+        for layer_cache in self.cache:
+            layer_cache.reuse(len(self.tokens), i)
+        new_tokens = self.tokens[i:]
 
         print(f"{new_tokens}")
         return self._generate(new_tokens)
@@ -134,9 +127,7 @@ class ObservedLLM:
 
     def _generate(self, new_input_tokens: list[int]):
         self.layer_attention_scores = []
-        logits, self.cache = self._run_model(
-            mx.array(new_input_tokens)[None], self.cache
-        )
+        logits = self.model(mx.array(new_input_tokens)[None], self.cache)
 
         TOP_TOKEN_COUNT = 1000
         probs = mx.softmax(logits[0, -1, :])
@@ -180,34 +171,6 @@ class ObservedLLM:
             "top_tokens": top_tokens,
             "prompt_perplexity": prompt_perplexity,
         }
-
-    def _run_model(self, inputs: mx.array, cache=None):
-        """
-        This is like the model's __call__() method as implemented in
-        `mlx-examples/llms/mlx_lm/models/*.py`, except it is also able
-        to apply a causal mask once a cache is in place.
-        """
-        model = self.model.model
-        h = model.embed_tokens(inputs)
-
-        mask = None
-        T = h.shape[1]  # pylint: disable=invalid-name
-        if T > 1:
-            if cache is None:
-                S = 0  # pylint: disable=invalid-name
-            else:
-                S = cache[0][0].shape[2]  # pylint: disable=invalid-name
-            mask = nn.MultiHeadAttention.create_additive_causal_mask(S + T)
-            mask = mask.split([S])[1].astype(h.dtype)
-
-        if cache is None:
-            cache = [None] * len(model.layers)
-
-        for e, layer in enumerate(model.layers):
-            h, cache[e] = layer(h, mask, cache[e])
-
-        out = model.norm(h)
-        return self.model.lm_head(out), cache
 
 
 try:
