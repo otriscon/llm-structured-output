@@ -1,4 +1,5 @@
-mlx-lm
+mlx >= 0.13.0
+mlx-lm >= 0.13.0
 sentencepiece
 fastapi
 pydantic
