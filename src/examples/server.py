@@ -236,6 +236,9 @@ to answer the user request below.
             assert False
     if finish_reason == "tool_calls":
         tool_calls = json.loads(content)
+        if not isinstance(tool_calls, list):
+            # len(functions) == 1 was special cased
+            tool_calls = [tool_calls]
         message = {
             "role": "assistant",
             "tool_calls": [

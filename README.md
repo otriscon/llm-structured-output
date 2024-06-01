@@ -122,6 +122,44 @@ Run the server example:
 MODEL_PATH=mistralai/Mistral-7B-Instruct-v0.2 uvicorn examples.server:app --port 8080 --reload
 ```
 
+Try calling the server with this example adapted from [the OpenAI documentation (click on the example request titled _Functions_)](https://platform.openai.com/docs/api-reference/chat/create):
+```sh
+curl http://localhost:8080/v1/chat/completions \
+-H "Content-Type: application/json" \
+-d '{
+  "model": "ignored",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What'\''s the weather like in Boston today?"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_current_weather",
+        "description": "Get the current weather in a given location",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "type": "string",
+              "description": "The city and state, e.g. San Francisco, CA"
+            },
+            "unit": {
+              "type": "string",
+              "enum": ["celsius", "fahrenheit"]
+            }
+          },
+          "required": ["location"]
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto"
+}'
+```
 
 ### Using the JSON schema acceptor in your project
 
