@@ -64,6 +64,11 @@ class Model:
             )
         )
 
+    def get_driver_for_json_schema(self, schema, encapsulated: bool = False):
+        return self.json_schema_acceptor_driver_factory(
+            schema, is_encapsulated_json=encapsulated
+        )
+
     def _evaluate_prompt(
         self, prompt: list[int], prior_prompt: list[int] = None, prior_cache=None
     ):
@@ -187,7 +192,9 @@ class Model:
                 # Re-shape the cache to match the input.
                 for layer_cache in cache:
                     layer_cache.keys = mx.concatenate([layer_cache.keys] * len(batch))
-                    layer_cache.values = mx.concatenate([layer_cache.values] * len(batch))
+                    layer_cache.values = mx.concatenate(
+                        [layer_cache.values] * len(batch)
+                    )
             else:  # Otherwise, submit the normal one-token continuation.
                 batch = [[last_token]]
 
@@ -302,10 +309,7 @@ class Model:
         }
 
         if schema:
-            token_acceptor = self.json_schema_acceptor_driver_factory(
-                schema,
-                is_encapsulated_json=encapsulated,
-            )
+            token_acceptor = self.get_driver_for_json_schema(schema, encapsulated)
             if preemptive_batch_size > 0:
                 generator = self.generate_with_preemptive_decoding(
                     logits,

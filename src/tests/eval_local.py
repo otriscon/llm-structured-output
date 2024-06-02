@@ -2,6 +2,8 @@
 """
 Run a function calling evaluation with the Fireworks AI dataset or similar
 https://huggingface.co/datasets/fireworks-ai/function-calling-eval-dataset-v0
+
+Note the dataset needs to be exported from parquet to JSON for this tool.
 """
 import argparse
 import json
@@ -15,30 +17,32 @@ from llm_structured_output.util.output import info, bold, inverse, debug
 
 def run_eval_case(model, case, header, temp=None, seed=None, preemptive_batch_size=0):
     messages = case["prompt"]
-    gold_completion = json.loads(case["completion"].partition("<functioncall>")[2])
     tools = json.loads(case["tools"])
 
     schema = {
-        "anyOf": [
-            {
-                "type": "object",
-                "properties": {
-                    "function_call": {
-                        "type": "object",
-                        "properties": {
-                            "name": {
-                                "type": "const",
-                                "const": tool["function"]["name"],
+        "type": "array",
+        "items": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "function_call": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "const",
+                                    "const": tool["function"]["name"],
+                                },
+                                "arguments": tool["function"]["parameters"],
                             },
-                            "arguments": tool["function"]["parameters"],
-                        },
-                        "required": ["name", "arguments"],
-                    }
-                },
-                "required": ["function_call"],
-            }
-            for tool in tools
-        ]
+                            "required": ["name", "arguments"],
+                        }
+                    },
+                    "required": ["function_call"],
+                }
+                for tool in tools
+            ]
+        },
     }
 
     info(f"{header} Starting generation...")
@@ -78,8 +82,19 @@ def run_eval_case(model, case, header, temp=None, seed=None, preemptive_batch_si
         f"{header} {prompt_tokens=} {prompt_tps=:.02f} {completion_tokens=} {completion_tps=:.02f} {prompt_time=:.02f} {completion_time=:.02f} {total_time=:.02f}"
     )
 
-    completion = json.loads(content)["function_call"]
-    diff = DeepDiff(gold_completion, completion)
+    tool_calls = [
+        {
+            "name": tool_call["function_call"]["name"],
+            "arguments": tool_call["function_call"]["arguments"],
+        }
+        for tool_call in json.loads(content)
+    ]
+
+    gold_tool_calls = [
+        json.loads(fn) for fn in case["completion"].split("<functioncall>")[1:]
+    ]
+
+    diff = DeepDiff(gold_tool_calls, tool_calls)
     if diff:
         inverse(f"{header} DIFF:", diff)
         return False
@@ -101,7 +116,7 @@ def main():
     parser.add_argument(
         "--dataset-path",
         type=str,
-        help="The path to the evaluation dataset",
+        help="The path to the evaluation dataset (JSON)",
     )
     parser.add_argument(
         "--skip",

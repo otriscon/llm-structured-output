@@ -286,10 +286,30 @@ class StringAcceptor(StateMachineAcceptor):
             return True
 
         def get_value(self):
-            if self.in_accepted_state():
+            if self.value is not None:
                 return self.value
             else:
                 return f"{self.text}👉"
+
+
+class StringConstantAcceptor(TextAcceptor):
+    """
+    Accept a constant string, quoted and escaped.
+    """
+
+    def __init__(self, string: str):
+        self.string = string
+        super().__init__(json.dumps(string))
+
+    class Cursor(TextAcceptor.Cursor):
+        """
+        Cursor for StringConstantAcceptor
+        """
+
+        def get_value(self) -> str:
+            if self.pos == len(self.acceptor.text):
+                return self.acceptor.string
+            return super().get_value()
 
 
 class NumberTokenTrie(TokenTrie):
