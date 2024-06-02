@@ -21,6 +21,7 @@ from .json_acceptor import (
     BooleanAcceptor,
     NullAcceptor,
     StringAcceptor,
+    StringConstantAcceptor,
     NumberAcceptor,
     ArrayAcceptor,
     ObjectAcceptor,
@@ -40,7 +41,7 @@ def ConstSchemaAcceptor(schema: dict):
     """
     Accept a constant string
     """
-    return TextAcceptor.for_json_string(schema["const"])
+    return StringConstantAcceptor(schema["const"])
 
 
 class EnumSchemaAcceptor(StateMachineAcceptor):
@@ -50,7 +51,7 @@ class EnumSchemaAcceptor(StateMachineAcceptor):
 
     def __init__(self, schema: dict):
         super().__init__(
-            [[(TextAcceptor.for_json_string(value), "$") for value in schema["enum"]]]
+            [[(StringConstantAcceptor(value), "$") for value in schema["enum"]]]
         )
 
 
@@ -402,7 +403,7 @@ class ObjectSchemaAcceptor(ObjectAcceptor):
             }
             super().__init__(
                 [
-                    TextAcceptor.for_json_string(self.prop_name),
+                    StringConstantAcceptor(self.prop_name),
                     WhitespaceAcceptor(),
                     TextAcceptor(":"),
                     WhitespaceAcceptor(),
@@ -412,12 +413,28 @@ class ObjectSchemaAcceptor(ObjectAcceptor):
 
         class Cursor(ObjectAcceptor.PropertyAcceptor.Cursor):
             """
-            Cursor for ObjectAcceptor.PropertyAcceptor
+            Cursor for ObjectSchemaAcceptor.PropertyAcceptor
             """
 
             def __init__(self, acceptor):
                 super().__init__(acceptor)
                 self.acceptor = acceptor
+
+            def complete_transition(
+                self, transition_value, target_state, is_end_state
+            ) -> bool:
+                if not super().complete_transition(
+                    transition_value, target_state, is_end_state
+                ):
+                    return False
+                hooks = self.acceptor.prop_schema.get("__hooks", None)
+                if hooks:
+                    prop_name = self.acceptor.prop_name
+                    if target_state == 4 and "value_start" in hooks:
+                        hooks["value_start"](prop_name)
+                    elif is_end_state and "value_end" in hooks:
+                        hooks["value_end"](prop_name, transition_value)
+                return True
 
             def get_value(self):
                 return (self.acceptor.prop_name, self.prop_value)
@@ -620,6 +637,12 @@ class JsonSchemaAcceptorDriver:
         Raised when the token cannot advance any of the current acceptors.
         """
 
+    class CharacterRejected(Exception):
+        """
+        Raised in character-by-character mode (advance_char method) when the
+        character cannot advance any of the current acceptors.
+        """
+
     @classmethod
     def driver_factory_for_model(
         cls,
@@ -639,15 +662,18 @@ class JsonSchemaAcceptorDriver:
         vocabulary_trie = TokenAcceptor.prepare_vocabulary(vocabulary)
         prepare_json_acceptor_tries(vocabulary_trie)
 
-        def _factory(schema: dict, is_encapsulated_json: bool = False) -> JsonSchemaAcceptorDriver:
+        def _factory(
+            schema: dict, is_encapsulated_json: bool = False
+        ) -> JsonSchemaAcceptorDriver:
             return JsonSchemaAcceptorDriver(
                 vocabulary_dict, vocabulary_trie, eos_id, schema, is_encapsulated_json
             )
+
         return _factory
 
     def __init__(
         self,
-        vocabulary_dict: dict[int ,str],
+        vocabulary_dict: dict[int, str],
         vocabulary_trie: TokenTrie,
         eos_id: int,
         schema: dict,
@@ -729,4 +755,14 @@ class JsonSchemaAcceptorDriver:
                 debug_output_fn("  " + "\n  ".join(repr(c) for c in cursors))
             if ncursors == 0:
                 raise JsonSchemaAcceptorDriver.TokenRejected()
+        self.cursors = cursors
+
+    def advance_char(self, char):
+        """
+        Advance the state(s) of the acceptor one character at a time.
+        This is useful for applications such as partial JSON parsing.
+        """
+        cursors = TokenAcceptor.advance_all(self.cursors, char)
+        if not cursors:
+            raise JsonSchemaAcceptorDriver.CharacterRejected()
         self.cursors = cursors

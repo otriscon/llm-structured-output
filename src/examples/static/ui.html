@@ -1,0 +1,323 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>LLM</title>
+    <style>
+        body {
+            font-family: monospace;
+            font-size: 15px;
+            color: rgba(10, 10, 20, 0.9);
+            background-color: #d8d3b6;
+        }
+
+        h2 {
+            text-transform: uppercase;
+            font-size: 1.1em;
+            font-weight: 500;
+            padding: 2px 4px 0px 4px;
+            margin-bottom: 6px;
+            color: #775;
+        }
+
+        fieldset {
+            border: none;
+            padding: 0;
+        }
+
+        fieldset legend {
+            display: contents;
+            text-transform: uppercase;
+            font-size: 0.9em;
+            color: #553;
+        }
+
+        label {
+            text-transform: uppercase;
+            font-size: 0.8em;
+            font-weight: 500;
+            color: #553;
+        }
+
+        label.vertical {
+            writing-mode: vertical-lr;
+            transform: rotate(180deg);
+            margin-right: 6px;
+        }
+
+        button {
+            font-size: 0.8em;
+            background-color: #c8c3a6;
+            border: 2px solid gray;
+            border-radius: 0.5em;
+            padding: 0.66em;
+            cursor: pointer;
+        }
+
+        button.narrow {
+            padding: 0.2em;
+        }
+
+        button:focus {
+            outline: none;
+            border: 2px solid blue;
+        }
+
+        textarea {
+            font-family: monospace;
+            font-size: 1em;
+            padding: 3px;
+            border-radius: 3px;
+            border: 1px solid gray;
+        }
+
+        textarea:focus {
+            outline: none;
+            border: 1px solid blue;
+        }
+
+        input {
+            border-radius: 2px;
+            border: none;
+            padding: 3px;
+        }
+
+        fieldset {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            justify-items: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        #ui {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        #prompt-div,
+        #json-schema-div,
+        #output-div {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        #output-div {
+            max-width: fit-content;
+        }
+
+        #stop-reason {
+            font-size: 0.8em;
+            color: #775;
+            margin-left: 10px;
+        }
+
+        tokens {
+            background-color: #eee;
+            padding: 12px;
+            border-radius: 3px;
+            overflow-x: scroll;
+        }
+
+        token {
+            white-space: pre;
+            padding: 3px 1px;
+            margin: 5px 0;
+            border-left: 1px dashed gray;
+            cursor: default;
+        }
+
+        token:last-of-type {
+            border-right: 1px dashed gray;
+        }
+
+        token.rejected {
+            text-decoration: line-through;
+            text-decoration-color: red;
+        }
+
+        [data-tooltip],
+        token[data-tooltip] {
+            cursor: crosshair;
+        }
+
+        [data-tooltip]:hover::after {
+            display: block;
+            position: absolute;
+            content: attr(data-tooltip);
+            border: 1px solid black;
+            border-radius: 2px;
+            background: #eee;
+            padding: .2em;
+            font-size: 0.8em;
+        }
+    </style>
+    <script>
+        const sanitize = (text) =>
+            String(text)
+                .replaceAll('&', '&amp')
+                .replaceAll('<', '&lt')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#x27;')
+                .replaceAll('\n', '&#x240A;\n')
+                .replaceAll('\r', '&#x240D;\r')
+                .replaceAll('\t', '&#x21E5;\t');
+
+        window.addEventListener('load', () => {
+            const resize = (event) => {
+                event.target.style.height = 'auto';
+                event.target.style.height = (event.target.scrollHeight) + "px";
+            };
+
+            const outputDivElement = document.getElementById('output-div');
+            const hideOutput = () => { outputDivElement.classList.add('hidden'); };
+            const showOutput = () => { outputDivElement.classList.remove('hidden'); };
+            const outputTokensElement = document.getElementById('output-tokens');
+            const clearOutputTokens = () => { outputTokensElement.innerHTML = ''; };
+            const addOutputToken = (token) => {
+                outputTokensElement.innerHTML += `<token>${sanitize(token)}</token>`;
+            };
+
+            const stopReasonElement = document.getElementById('stop-reason');
+            const hideStopReason = () => { stopReasonElement.classList.add('hidden'); };
+            const showStopReason = (reason) => {
+                stopReasonElement.innerText = reason;
+                stopReasonElement.classList.remove('hidden');
+            };
+
+            const promptInput = document.getElementById('prompt-area');
+            promptInput.addEventListener('input', resize);
+            promptInput.addEventListener('input', hideOutput);
+
+            const jsonSchemaCheck = document.getElementById('json-schema-check');
+            jsonSchemaCheck.addEventListener('change', (event) => {
+                if (event.target.checked) {
+                    document.getElementById('json-schema-div').classList.remove('hidden');
+                } else {
+                    document.getElementById('json-schema-div').classList.add('hidden');
+                }
+            });
+            const jsonSchemaInput = document.getElementById('json-schema-area');
+            jsonSchemaInput.addEventListener('input', resize);
+
+            const startGenerationButton = document.getElementById('start-generation-btn');
+            startGenerationButton.addEventListener('click', async (event) => {
+                event.preventDefault();
+                let prompt = promptInput.value;
+                let schema;
+                if (jsonSchemaCheck.checked) {
+                    schema = jsonSchemaInput.value;
+                    try { JSON.parse(schema); } catch (e) { alert(`Invalid schema: ${e.message}`); return; }
+                    prompt = prompt.replaceAll('{{__SCHEMA__}}', schema);
+                }
+                const arguments = {
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: document.getElementById('temp-number').value,
+                    max_tokens: document.getElementById('max-tokens-number').value,
+                    stream: true,
+                };
+                if (schema) {
+                    arguments.response_format = { type: 'json_object', schema };
+                }
+                const t0 = Date.now();
+                const response = await fetch(`${document.location.href}/v1/chat/completions`,
+                    {
+                        method: 'POST',
+                        body: JSON.stringify(arguments),
+                        headers: { 'Content-Type': 'application/json', },
+                    }
+                );
+                if (!response.ok) {
+                    alert(`Error: ${response.status} ${response.statusText}`);
+                } else {
+                    clearOutputTokens();
+                    showOutput();
+                    // For some reason, `for await (const chunk of response.body)` doesn't work in Safari.
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let leftover = '';
+                    let stop_reason = 'request_aborted';
+                    let model_name;
+                    let usage;
+                    for (; ;) {
+                        const { value, done } = await reader.read();
+                        const chunkText = decoder.decode(value);
+                        const lines = (leftover + chunkText).split('\n');
+                        leftover = lines.pop();
+                        for (const line of lines) {
+                            if (line.trim() === '') continue;
+                            if (!line.startsWith('data:'))
+                                throw new Error(
+                                    "Expected all server-side event messages to start with 'data:'"
+                                );
+                            const message = line.slice(5).trim();
+                            if (message === '[DONE]') break;
+
+                            let data;
+                            try { data = JSON.parse(message); }
+                            catch (err) { throw new Error('Chunk JSON parsing failed'); }
+
+                            token = data.choices[0].delta.content;
+                            if (token) addOutputToken(token);
+
+                            if (data.choices[0].finish_reason) {
+                                stop_reason = data.choices[0].finish_reason;
+                                model_name = data.model;
+                                usage = data.usage;
+                            }
+                        }
+                        if (done) break;
+                    }
+                    showStopReason(`${stop_reason} ${Date.now() - t0}ms prompt=${
+                        usage?.prompt_tokens ?? '?'} completion=${
+                        usage?.completion_tokens ?? '?'} ${model_name}`);
+                }
+            });
+        });
+
+    </script>
+</head>
+
+<body id="ui">
+    <div id="prompt-div">
+        <h2>Prompt</h2>
+        <textarea id="prompt-area" rows="3">Once upon a midnight dreary,</textarea>
+        <field>
+            <input type="checkbox" id="json-schema-check" />
+            <label for="json-schema-check">Use JSON schema</label>
+        </field>
+        <div id="json-schema-div" class="hidden">
+            <label for="json-schema-area">Enter JSON Schema below. You can use {{__SCHEMA__}} in the prompt to insert
+                the schema.</label>
+            <textarea id="json-schema-area" rows="3"></textarea>
+        </div>
+        <fieldset>
+            <legend>Generation options</legend>
+            <field>
+                <label for="temp-number">temp</label>
+                <input type="number" id="temp-number" min="0" max="2" step="0.05" value="0.0" />
+            </field>
+            <field>
+                <label for="max-tokens-number">max tokens</label>
+                <input type="number" id="max-tokens-number" min="0" max="10000" step="500" value="1000" />
+            </field>
+        </fieldset>
+        <div>
+            <button id="start-generation-btn">Start generation</button>
+            <button id="pause-generation-btn" class="hidden">Pause generation</button>
+        </div>
+    </div>
+    <div id="output-div" class="hidden">
+        <h2>Output</h2>
+        <tokens id="output-tokens"></tokens>
+        <div id="stop-reason" class="hidden"></div>
+    </div>
+</body>
+
+</html>

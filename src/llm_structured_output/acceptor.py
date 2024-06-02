@@ -52,7 +52,6 @@ point of the view of the acceptor.
 """
 
 from __future__ import annotations
-import json
 from copy import copy as shallowcopy
 from time import time_ns
 from typing import Iterable, Tuple
@@ -315,7 +314,7 @@ class CharAcceptor(TokenAcceptor):
         def advance(self, char):
             # Because we implemented the select method, we are guaranteed that the
             # char is in our accepted set.
-            return [AcceptedState(CharAcceptor.Cursor(self.acceptor, char))]
+            return [AcceptedState(self.__class__(self.acceptor, char))]
 
         def get_value(self):
             return self.value
@@ -330,13 +329,6 @@ class TextAcceptor(TokenAcceptor):
         assert len(text) > 0
         self.text = text
 
-    @classmethod
-    def for_json_string(cls, string) -> TextAcceptor:
-        """
-        Accept a quoted and escaped string.
-        """
-        return cls(json.dumps(string))
-
     class Cursor(TokenAcceptor.Cursor):
         """
         Cursor for TextAcceptor
@@ -350,7 +342,7 @@ class TextAcceptor(TokenAcceptor):
             return self.acceptor.text[self.pos]
 
         def advance(self, char):
-            next_cursor = TextAcceptor.Cursor(self.acceptor, self.pos + 1)
+            next_cursor = self.__class__(self.acceptor, self.pos + 1)
             if next_cursor.pos == len(self.acceptor.text):
                 return [AcceptedState(next_cursor)]
             return [next_cursor]
@@ -610,7 +602,7 @@ class WaitForAcceptor(TokenAcceptor):
             ]
             if accepted_cursors:
                 return accepted_cursors
-            return [WaitForAcceptor.Cursor(self.acceptor, cursors)]
+            return [self.__class__(self.acceptor, cursors)]
 
         def get_value(self):
             return f"Waiting for {repr(self.cursors)}"
