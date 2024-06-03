@@ -259,6 +259,13 @@ Your answer should be a JSON object according to this schema: {"type": "object",
 First, think through the task step by step, and then output a JSON object wrapped between the lines ```json and ```.
 ```
 
+In our OpenAI-compatible server example, when the request specifies `tool_calls` or a
+legacy `function_call`, we automatically prepend a system message to the prompt with
+the schema and instructions for the LLM to use the tools provided. If your prompt already
+includes these instructions (because e.g. you want to customize them), this can be disabled
+with a non-standard option in the request payload: `"tool_options": { "no_prompt_steering": true }`
+
+
 ## Testing
 
 The library has been tested with the following datasets:
@@ -286,8 +293,9 @@ one of the possible continuations predicted according to the schema. We can
 then sample two tokens instead of one.  We find that this approach can
 occasionally produce considerable increases in token generation speed, but in
 general it can also considerably slow it down, depending on model and
-quantization. We are investigating whether this is an effect of Apple hardware
-architecture, the MLX library, or our own implementation mistakes.
+quantization. We found that it works better with no fp16 models (no quantization),
+but batching performance degrades vastly in quantized models making pre-emptive
+decoding not worth it for those models.
 
 ### Benchmarks
 
@@ -328,7 +336,7 @@ with 192GB of RAM using MLX version 0.9.0, with models converted to MLX format.
 
 **Notes:**
 
-- Pre-emptive decoding is vastly slower, with the only change being quantization (?!)
+- Pre-emptive decoding is vastly slower, with the only change being quantization.
 
 <br>
 <br>
@@ -358,12 +366,9 @@ with 192GB of RAM using MLX version 0.9.0, with models converted to MLX format.
 
 ## Roadmap
 
-- Investigate performance enhancements. Is batching slow because of our
-  implementation or the MLX implementation or Apple hardware limitations (flops?)
-
-- Extend JSON schema support as needed. Please, feel free to open an issue if
-  you need a feature that not supported at the moment. Also open to implement
-  additional schemas such as YAML and reference implementations for other LLMs.
+- Extend JSON schema support as needed (see TODOs in code). Please, feel free to
+  open an issue if you need a feature that not supported at the moment. Also open to
+  implement additional schemas such as YAML and reference implementations for other LLMs.
 
 - Add formal test cases.
 
