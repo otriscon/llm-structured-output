@@ -8,7 +8,7 @@ version = "0.0.14"
 authors = [
   { name="Oscar D.P. Triscon", email="github@triscon.com" },
 ]
-description = "Constrain LLM generation to structured output, such as function calling a.k.a. tool use"
+description = "Constrain LLM generation to structured output, such as function calling and tool use"
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
@@ -20,3 +20,11 @@ classifiers = [
 [project.urls]
 Homepage = "https://github.com/otriscon/llm-structured-output"
 Issues = "https://github.com/otriscon/llm-structured-output/issues"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "LICENSE",
+  "README.md",
+  "pyproject.toml",
+  "llm_structured_output",
+]
