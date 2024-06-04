@@ -659,7 +659,7 @@ class JsonSchemaAcceptorDriver:
             (token, fragment) for token, fragment in vocabulary if token != eos_id
         ]
         vocabulary_dict = dict(vocabulary_list)
-        vocabulary_trie = TokenAcceptor.prepare_vocabulary(vocabulary)
+        vocabulary_trie = TokenAcceptor.prepare_vocabulary(vocabulary_list)
         prepare_json_acceptor_tries(vocabulary_trie)
 
         def _factory(

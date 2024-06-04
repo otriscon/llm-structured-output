@@ -319,6 +319,9 @@ class CharAcceptor(TokenAcceptor):
         def get_value(self):
             return self.value
 
+        def __repr__(self):
+            return f"charset={repr(self.acceptor.charset)} value={repr(self.value)}"
+
 
 class TextAcceptor(TokenAcceptor):
     """
