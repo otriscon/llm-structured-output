@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm_structured_output"
-version = "0.0.15"
+version = "0.0.16"
 authors = [
   { name="Oscar D.P. Triscon", email="github@triscon.com" },
 ]
