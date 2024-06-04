@@ -220,6 +220,7 @@ async def post_v1_chat_completions_impl(request: V1ChatCompletionsRequest):
         schema=schema,
         max_tokens=request.max_tokens,
         temp=request.temperature,
+        cache_prompt=True,
     ):
         if result["op"] == "evaluatedPrompt":
             prompt_tokens = result["token_count"]
