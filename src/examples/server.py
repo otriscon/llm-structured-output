@@ -412,35 +412,35 @@ class ToolCallResponder(ChatCompletionResponder):
             **self.message_properties(),
         }
 
-    def _one_tool_prompt(self, fn, fn_schema):
+    def _one_tool_prompt(self, tool, tool_schema):
         return f"""
 You are a helpful assistant with access to a tool that you must invoke to answer the user's request.
 The tool is:
-Function {fn.name}: {fn.description}
-Invocation schema: {json.dumps(fn_schema)}
+Tool {tool.name}: {tool.description}
+Invocation schema: {json.dumps(tool_schema)}
 Your answer is a JSON object according to the invocation schema in order to answer the user request below.
 """
 
-    def _multiple_tool_prompt(self, functions, function_schemas, separator="\n\n"):
+    def _multiple_tool_prompt(self, tools, tool_schemas, separator="\n"):
         return f"""
 You are a helpful assistant with access to tools that you must invoke to answer the user's request.
 The following tools are available:
 {separator.join([ f'''
-Function {fn.name}: {fn.description}
-Invocation schema: {json.dumps(fn_schema)}
-''' for fn, fn_schema in zip(functions, function_schemas) ])}
+Tool {tool.name}: {tool.description}
+Invocation schema: {json.dumps(tool_schema)}
+''' for tool, tool_schema in zip(tools, tool_schemas) ])}
 Your answer is a JSON array with one or more tool invocations according to the appropriate schema(s)
 in order to answer the user request below.
 """
 
-    def _select_tool_prompt(self, functions, function_schemas, separator="\n\n"):
+    def _select_tool_prompt(self, tools, tool_schemas, separator="\n"):
         return f"""
 You are a helpful assistant with access to tools that you must invoke to answer the user's request.
 The following tools are available:
 {separator.join([ f'''
-Function {fn.name}: {fn.description}
-Invocation schema: {json.dumps(fn_schema)}
-''' for fn, fn_schema in zip(functions, function_schemas) ])}
+Function {tool.name}: {tool.description}
+Tool schema: {json.dumps(tool_schema)}
+''' for tool, tool_schema in zip(tools, tool_schemas) ])}
 Your answer is a JSON object according to the invocation schema of the most appropriate tool to use
 to answer the user request below.
 """

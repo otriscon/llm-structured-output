@@ -1,18 +1,15 @@
 # pylint: disable=missing-function-docstring
 """
-Run a function calling evaluation with the Fireworks AI dataset or similar
-https://huggingface.co/datasets/fireworks-ai/function-calling-eval-dataset-v0
-
-Note the dataset needs to be exported from parquet to JSON for this tool.
+Run a tool use evaluation using an LLM with an OpenAI-like API.
 """
 import argparse
 import json
 import time
 import requests
 
-from deepdiff import DeepDiff
+from llm_structured_output.util.output import info, inverse, debug, warning
 
-from llm_structured_output.util.output import info, bold, inverse, debug, warning
+from .eval_report import eval_completion
 
 
 def run_eval_case(
@@ -24,12 +21,15 @@ def run_eval_case(
     temp=0,
     seed=0,
     stream=False,
-    no_prompt_steering=False,
+    out=None,
 ):
+    options = case.get("options", {})
+    prompt_includes_schema = options.get("prompt_includes_schema", False)
+
     payload = {
         "model": model_name,
         "messages": case["prompt"],
-        "tools": json.loads(case["tools"]),
+        "tools": case["tools"],
         "tool_choice": "auto",
         "temperature": temp,
         "seed": seed,
@@ -37,11 +37,10 @@ def run_eval_case(
     if stream:
         payload["stream"] = True
         payload["stream_options"] = {"include_usage": True}
-    if no_prompt_steering:
+    if prompt_includes_schema and "api.openai.com" not in api_url:
         # Non-standard option, should not be set for OpenAI API.
         payload["tool_options"] = {
-            # Do not dump the schema again, since it's already in the prompts
-            # in the evaluation dataset.
+            # Do not dump the schema again, since it's already in the prompt
             "no_prompt_steering": True,
         }
 
@@ -112,25 +111,11 @@ def run_eval_case(
     completion_tokens = response["usage"]["completion_tokens"]
     info(f"{header} {prompt_tokens=} {completion_tokens=} {total_time=:.02f}")
 
-    try:
-        completion_tool_calls = response["choices"][0]["message"]["tool_calls"]
-    except (KeyError, TypeError):
-        warning(f"Completion object doesn't match expected format: {response=}")
-        completion_tool_calls = []
+    if out:
+        json.dump(response, out)
+        out.write("\n")
 
-    tool_calls = [
-        {
-            "name": tool_call["function"]["name"],
-            "arguments": json.loads(tool_call["function"]["arguments"]),
-        }
-        for tool_call in completion_tool_calls
-    ]
-
-    gold_tool_calls = [
-        json.loads(fn) for fn in case["completion"].split("<functioncall>")[1:]
-    ]
-
-    diff = DeepDiff(gold_tool_calls, tool_calls)
+    diff = eval_completion(case, response)
     if diff:
         inverse(f"{header} DIFF:", diff)
         return False
@@ -163,8 +148,9 @@ def main():
     )
     parser.add_argument(
         "--dataset-path",
+        required=True,
         type=str,
-        help="The path to the evaluation dataset (JSON)",
+        help="The path to the evaluation dataset (JSONL)",
     )
     parser.add_argument(
         "--skip",
@@ -184,6 +170,7 @@ def main():
         type=float,
         default=0.0,
     )
+    parser.add_argument("--seed", type=int, default=0, help="The PRNG seed")
     parser.add_argument(
         "--stream",
         help="Use streaming API.",
@@ -191,24 +178,31 @@ def main():
         default=False,
     )
     parser.add_argument(
-        "--disable-prompt-steering",
-        help="Ask the server not to add the schema to the prompt.",
-        action=argparse.BooleanOptionalAction,
-        default=False,
+        "--output-file",
+        help="Write completions to JSONL file.",
+        type=str,
+        default=None,
     )
-    parser.add_argument("--seed", type=int, default=0, help="The PRNG seed")
     args = parser.parse_args()
 
+    out = None
+    if args.output_file:
+        out = open(args.output_file, mode="w", encoding="utf-8")
+
     with open(args.dataset_path, encoding="utf-8") as dataset:
-        cases = json.load(dataset)
-        pass_count = 0
-        fail_count = 0
-        t0 = time.time_ns()
         if args.count:
             end_index = args.skip + args.count
         else:
-            end_index = len(cases)
-        for i, case in enumerate(cases[args.skip : end_index]):
+            end_index = None
+        pass_count = 0
+        fail_count = 0
+        t0 = time.time_ns()
+        for i, line in enumerate(dataset.readlines()):
+            if i < args.skip:
+                continue
+            if end_index is not None and i == end_index:
+                break
+            case = json.loads(line)
             if run_eval_case(
                 args.api_url,
                 args.api_key,
@@ -218,13 +212,16 @@ def main():
                 temp=args.temp,
                 seed=args.seed,
                 stream=args.stream,
-                no_prompt_steering=args.disable_prompt_steering,
+                out=out,
             ):
                 pass_count += 1
             else:
                 fail_count += 1
         average_time = (time.time_ns() - t0) / 1e9 / (pass_count + fail_count)
         info(f"Totals: {pass_count=} {fail_count=} {average_time=:.02}s")
+
+    if out:
+        out.close()
 
 
 main()

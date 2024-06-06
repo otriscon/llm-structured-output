@@ -274,6 +274,28 @@ The library has been tested with the following datasets:
 
 - [ALU.AI's table extraction](https://blog.alu.ai/tables-and-structured-data/) evaluation dataset (not yet open-source)
 
+## Evaluations
+
+We're starting to perform evaluations to understand how well different LLMs perform
+in function calling tasks. The tools and data can be found in the [src/tests](src/tests/) folder.
+
+### Fireworks.ai function calling eval dataset
+
+Environment:
+
+- llm_structured_output v0.0.15
+- mlx 0.14.1
+- 2023 Mac Studio M2 Ultra 24 cores (16 performance and 8 efficiency) 192 GB RAM running macOS Sonoma 14.5
+- LLM: mlx-community/Meta-Llama-3-8B-Instruct-4bit
+- Benchmarking LLM: gpt-4o-2024-05-13
+
+Results:
+
+- [multi-turn dataset report](src/tests/data/fireworks-ai_function-calling-eval-dataset-v0/report-multi_turn.md)
+
+- [single-turn dataset report](src/tests/data/fireworks-ai_function-calling-eval-dataset-v0/report-single_turn.md)
+
+
 ## Performance
 
 Since we need to select the acceptable tokens prior to sampling, constraining

@@ -1,49 +1,89 @@
 # pylint: disable=missing-function-docstring
 """
-Run a function calling evaluation with the Fireworks AI dataset or similar
-https://huggingface.co/datasets/fireworks-ai/function-calling-eval-dataset-v0
-
-Note the dataset needs to be exported from parquet to JSON for this tool.
+Run a tool use evaluation using a local LLM.
 """
 import argparse
 import json
 import time
 
-from deepdiff import DeepDiff
-
 from examples.llm_schema import Model
 from llm_structured_output.util.output import info, bold, inverse, debug
+
+from .eval_report import eval_tool_calls
 
 
 def run_eval_case(model, case, header, temp=None, seed=None, preemptive_batch_size=0):
     messages = case["prompt"]
-    tools = json.loads(case["tools"])
+    tools = case["tools"]
+    options = case.get("options", {})
+    prompt_includes_schema = options.get("prompt_includes_schema", False)
+    single_tool = options.get("single_tool", False)
 
-    schema = {
-        "type": "array",
-        "items": {
-            "anyOf": [
-                {
-                    "type": "object",
-                    "properties": {
-                        "function_call": {
-                            "type": "object",
-                            "properties": {
-                                "name": {
-                                    "type": "const",
-                                    "const": tool["function"]["name"],
-                                },
-                                "arguments": tool["function"]["parameters"],
-                            },
-                            "required": ["name", "arguments"],
-                        }
+    tool_schemas = [
+        {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "const",
+                    "const": tool["function"]["name"],
+                },
+                "arguments": tool["function"]["parameters"],
+            },
+            "required": ["name", "arguments"],
+        }
+        for tool in tools
+    ]
+
+    separator = "\n"
+    if single_tool:
+        schema = {"anyOf": tool_schemas}
+        if not prompt_includes_schema:
+            schema_message = f"""
+You are a helpful assistant with access to tools that you must invoke to answer the user's request.
+The following tools are available:
+{separator.join([ f'''
+Tool {repr(tool[tool["type"]]["name"])}: {tool[tool["type"]]["description"]}
+Invocation schema: {json.dumps(tool_schema)}
+''' for tool, tool_schema in zip(tools, tool_schemas) ])}
+Your answer is a JSON object according to the invocation schema of the most appropriate tool to use
+to answer the user request below.
+"""
+            print(json.dumps(schema, indent=2)) ###
+            print(schema_message) ###
+            messages.insert(0, {"role": "system", "message": schema_message})
+    else:
+        tool_call_schemas = [
+            {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "const",
+                        "const": tool["type"],
                     },
-                    "required": ["function_call"],
-                }
-                for tool in tools
-            ]
-        },
-    }
+                    tool["type"]: tool_schema,
+                },
+                "required": ["type", tool["type"]],
+            }
+            for tool, tool_schema in zip(tools, tool_schemas)
+        ]
+        schema = {
+            "type": "array",
+            "items": {"anyOf": tool_call_schemas},
+        }
+        if not prompt_includes_schema:
+            schema_message = f"""
+You are a helpful assistant with access to tools that you must invoke to answer the user's request.
+The following tools are available:
+{separator.join([ f'''
+Tool {repr(tool[tool["type"]]["name"])}: {tool[tool["type"]]["description"]}
+Invocation schema: {json.dumps(tool_call_schema)}
+''' for tool, tool_call_schema in zip(tools, tool_call_schemas) ])}
+Your answer is a JSON array with one or more tool invocations according to the appropriate schema(s)
+in order to answer the user request below.
+"""
+            print(json.dumps(schema, indent=2)) ###
+            print(schema_message) ###
+            messages.insert(0, {"role": "system", "message": schema_message})
 
     info(f"{header} Starting generation...")
     content = ""
@@ -79,22 +119,15 @@ def run_eval_case(model, case, header, temp=None, seed=None, preemptive_batch_si
     prompt_tps = prompt_tokens / prompt_time * 1e3
     completion_tps = completion_tokens / completion_time * 1e3
     info(
-        f"{header} {prompt_tokens=} {prompt_tps=:.02f} {completion_tokens=} {completion_tps=:.02f} {prompt_time=:.02f} {completion_time=:.02f} {total_time=:.02f}"
+        f"{header} {prompt_tokens=} {prompt_tps=:.02f} {completion_tokens=} {completion_tps=:.02f}"
+        f" {prompt_time=:.02f} {completion_time=:.02f} {total_time=:.02f}"
     )
 
-    tool_calls = [
-        {
-            "name": tool_call["function_call"]["name"],
-            "arguments": tool_call["function_call"]["arguments"],
-        }
-        for tool_call in json.loads(content)
-    ]
+    tool_calls = json.loads(content)
+    if single_tool:
+        tool_calls = [{"type": "function", "function": tool_calls}]
 
-    gold_tool_calls = [
-        json.loads(fn) for fn in case["completion"].split("<functioncall>")[1:]
-    ]
-
-    diff = DeepDiff(gold_tool_calls, tool_calls)
+    diff = eval_tool_calls(case, tool_calls)
     if diff:
         inverse(f"{header} DIFF:", diff)
         return False
@@ -115,8 +148,9 @@ def main():
     )
     parser.add_argument(
         "--dataset-path",
+        required=True,
         type=str,
-        help="The path to the evaluation dataset (JSON)",
+        help="The path to the evaluation dataset (JSONL)",
     )
     parser.add_argument(
         "--skip",
@@ -150,15 +184,19 @@ def main():
     model.load(args.model_path)
 
     with open(args.dataset_path, encoding="utf-8") as dataset:
-        cases = json.load(dataset)
-        pass_count = 0
-        fail_count = 0
-        t0 = time.time_ns()
         if args.count:
             end_index = args.skip + args.count
         else:
-            end_index = len(cases)
-        for i, case in enumerate(cases[args.skip : end_index]):
+            end_index = None
+        pass_count = 0
+        fail_count = 0
+        t0 = time.time_ns()
+        for i, line in enumerate(dataset.readlines()):
+            if i < args.skip:
+                continue
+            if end_index is not None and i == end_index:
+                break
+            case = json.loads(line)
             if run_eval_case(
                 model,
                 case,
