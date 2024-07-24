@@ -56,7 +56,7 @@ class ReusableKVCache(KVCache):
             new_k = mx.zeros(k_shape, keys.dtype)
             new_v = mx.zeros(v_shape, values.dtype)
             if self.keys is not None:
-                if prev % self.step != 0:  # Resize when we hit a step
+                if prev % self.step != 0:
                     self.keys = self.keys[..., :prev, :]
                     self.values = self.values[..., :prev, :]
                 self.keys = mx.concatenate([self.keys, new_k], axis=2)
