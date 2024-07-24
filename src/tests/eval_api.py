@@ -208,7 +208,7 @@ def main():
                 args.api_key,
                 args.model_name,
                 case,
-                f"[{i+args.skip}]",
+                f"[{i}]",
                 temp=args.temp,
                 seed=args.seed,
                 stream=args.stream,

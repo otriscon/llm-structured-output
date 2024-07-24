@@ -200,7 +200,7 @@ def main():
             if run_eval_case(
                 model,
                 case,
-                f"[{i+args.skip}]",
+                f"[{i}]",
                 temp=args.temp,
                 seed=args.seed,
                 preemptive_batch_size=args.preemptive,
