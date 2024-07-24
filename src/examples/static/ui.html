@@ -111,7 +111,8 @@
             max-width: fit-content;
         }
 
-        #stop-reason {
+        #stop-reason,
+        #copy-result {
             font-size: 0.8em;
             color: #775;
             margin-left: 10px;
@@ -164,10 +165,7 @@
                 .replaceAll('<', '&lt')
                 .replaceAll('>', '&gt;')
                 .replaceAll('"', '&quot;')
-                .replaceAll("'", '&#x27;')
-                .replaceAll('\n', '&#x240A;\n')
-                .replaceAll('\r', '&#x240D;\r')
-                .replaceAll('\t', '&#x21E5;\t');
+                .replaceAll("'", '&#x27;');
 
         window.addEventListener('load', () => {
             const resize = (event) => {
@@ -183,6 +181,18 @@
             const addOutputToken = (token) => {
                 outputTokensElement.innerHTML += `<token>${sanitize(token)}</token>`;
             };
+            const copyOutputButton = document.getElementById('copy-output-btn');
+            const copyResultElement = document.getElementById('copy-result');
+            copyOutputButton.addEventListener('click', async () => {
+                let success = true;
+                try {
+                    await navigator.clipboard.writeText(outputTokensElement.innerText);
+                } catch (err) {
+                    success = false;
+                }
+                copyResultElement.innerText = success ? "output copied to clipboard" : "failed to copy to clipboard";
+                copyResultElement.classList.remove('hidden');
+            })
 
             const stopReasonElement = document.getElementById('stop-reason');
             const hideStopReason = () => { stopReasonElement.classList.add('hidden'); };
@@ -274,9 +284,7 @@
                         }
                         if (done) break;
                     }
-                    showStopReason(`${stop_reason} ${Date.now() - t0}ms prompt=${
-                        usage?.prompt_tokens ?? '?'} completion=${
-                        usage?.completion_tokens ?? '?'} ${model_name}`);
+                    showStopReason(`reason=${stop_reason} ${Date.now() - t0}ms prompt=${usage?.prompt_tokens ?? '?'} completion=${usage?.completion_tokens ?? '?'} ${model_name}`);
                 }
             });
         });
@@ -317,6 +325,10 @@
         <h2>Output</h2>
         <tokens id="output-tokens"></tokens>
         <div id="stop-reason" class="hidden"></div>
+        <div>
+            <button id="copy-output-btn">Copy</button>
+            <div id="copy-result" class="hidden"></div>
+        </div>
     </div>
 </body>
 
