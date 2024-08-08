@@ -6,6 +6,7 @@ import json
 import time
 import os
 from enum import Enum
+from traceback import format_exc
 from typing import Literal, List, Optional, Union
 
 from fastapi import FastAPI, Request, status
@@ -33,7 +34,7 @@ except KeyError:
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     exc_str = f"{exc}"
     warning(f"RequestValidationError: {exc_str}")
-    content = {"status_code": 10422, "message": exc_str, "data": None}
+    content = {"error": exc_str}
     return JSONResponse(
         content=content, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
     )
@@ -127,13 +128,29 @@ class V1ChatCompletionsRequest(
 async def post_v1_chat_completions(request: V1ChatCompletionsRequest):
     debug("REQUEST", request)
     if request.stream:
+        async def get_content():
+            try:
+                async for message in post_v1_chat_completions_impl(request):
+                    yield message
+            # pylint: disable-next=broad-exception-caught
+            except Exception as e:
+                warning(format_exc())
+                yield 'data: {"choices": [{"index": 0, "finish_reason": "error: ' + str(e) + '"}]}'
         return StreamingResponse(
-            content=post_v1_chat_completions_impl(request),
+            content=get_content(),
             media_type="text/event-stream",
         )
     else:
         # FUTURE: Python 3.10 can use `await anext(x))` instead of `await x.__anext__()`.
-        response = await post_v1_chat_completions_impl(request).__anext__()
+        try:
+            response = await post_v1_chat_completions_impl(request).__anext__()
+        # pylint: disable-next=broad-exception-caught
+        except Exception as e:
+            warning(format_exc())
+            content = {"error": str(e)}
+            response = JSONResponse(
+                content=content, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         debug("RESPONSE", response)
         return response
 
@@ -297,12 +314,12 @@ class ChatCompletionResponder:
 
 
 class ChatCompletionStreamingResponder(ChatCompletionResponder):
-    def __init__(self, model_name: str, schema: dict = None, model = None):
+    def __init__(self, model_name: str, schema: dict = None, _model = None):
         super().__init__(model_name)
         self.object_type = "chat.completion.chunk"
         if schema:
-            assert model
-            self.schema_parser = model.get_driver_for_json_schema(schema)
+            assert _model
+            self.schema_parser = _model.get_driver_for_json_schema(schema)
         else:
             self.schema_parser = None
 
@@ -312,12 +329,12 @@ class ChatCompletionStreamingResponder(ChatCompletionResponder):
     ):
         delta = {"role": "assistant", "content": text}
         if self.schema_parser:
-             values = {}
-             for char in text:
-                 self.schema_parser.advance_char(char)
-                 for path in self.schema_parser.get_current_value_paths():
-                     values[path] = values.get(path, "") + char
-             delta["values"] = values
+            values = {}
+            for char in text:
+                self.schema_parser.advance_char(char)
+                for path in self.schema_parser.get_current_value_paths():
+                    values[path] = values.get(path, "") + char
+            delta["values"] = values
         message = {
             "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
             **self.message_properties(),
@@ -464,7 +481,7 @@ class ToolCallStreamingResponder(ToolCallResponder):
         model_name: str,
         functions: list[dict],
         is_legacy_function_call: bool,
-        model,
+        _model,
     ):
         super().__init__(model_name, functions, is_legacy_function_call)
         self.object_type = "chat.completion.chunk"
@@ -519,7 +536,7 @@ class ToolCallStreamingResponder(ToolCallResponder):
                 "type": "array",
                 "items": {"anyOf": hooked_function_schemas},
             }
-        self.tool_call_parser = model.get_driver_for_json_schema(hooked_schema)
+        self.tool_call_parser = _model.get_driver_for_json_schema(hooked_schema)
 
     def generated_tokens(
         self,
