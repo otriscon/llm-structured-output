@@ -766,3 +766,27 @@ class JsonSchemaAcceptorDriver:
         if not cursors:
             raise JsonSchemaAcceptorDriver.CharacterRejected()
         self.cursors = cursors
+
+    def get_current_value_paths(self):
+        """
+        This function will return the JSON path(s) for the value(s) that the
+        last accepted character was attached to. More than one path means
+        more than one possible parse for the JSON according to the schema,
+        and it's rare.
+        The value path is useful to know where in the JSON are we accepting a
+        value (string, number, boolean, null) at the moment. An empty array
+        means the last character was a syntactic elements (punctuation,
+        whitespace) or part of the name of a property.
+        Note that this function is mostly useful when advancing character by
+        character, because a token can straddle across states and thus its
+        path is not well-defined.
+        """
+        return [
+           f"${path}"
+           for path in set((
+               cursor.get_value_path()
+               for cursor in self.cursors if cursor.is_in_value()
+           ))
+        ]
+
+

@@ -196,10 +196,6 @@ async def post_v1_chat_completions_impl(request: V1ChatCompletionsRequest):
             )
         schema = responder.schema
     else:
-        if request.stream:
-            responder = ChatCompletionStreamingResponder(model_name)
-        else:
-            responder = ChatCompletionResponder(model_name)
         if request.response_format:
             assert request.response_format.type == V1ResponseFormatType.JSON_OBJECT
             # The request may specify a JSON schema (this option is not in the OpenAI API)
@@ -207,6 +203,10 @@ async def post_v1_chat_completions_impl(request: V1ChatCompletionsRequest):
                 schema = json.loads(request.response_format.schema)
             else:
                 schema = {"type": "object"}
+        if request.stream:
+            responder = ChatCompletionStreamingResponder(model_name, schema, model)
+        else:
+            responder = ChatCompletionResponder(model_name)
 
     if schema is not None:
         debug("Using schema:", schema)
@@ -297,15 +297,27 @@ class ChatCompletionResponder:
 
 
 class ChatCompletionStreamingResponder(ChatCompletionResponder):
-    def __init__(self, model_name: str):
+    def __init__(self, model_name: str, schema: dict = None, model = None):
         super().__init__(model_name)
         self.object_type = "chat.completion.chunk"
+        if schema:
+            assert model
+            self.schema_parser = model.get_driver_for_json_schema(schema)
+        else:
+            self.schema_parser = None
 
     def generated_tokens(
         self,
         text: str,
     ):
         delta = {"role": "assistant", "content": text}
+        if self.schema_parser:
+             values = {}
+             for char in text:
+                 self.schema_parser.advance_char(char)
+                 for path in self.schema_parser.get_current_value_paths():
+                     values[path] = values.get(path, "") + char
+             delta["values"] = values
         message = {
             "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
             **self.message_properties(),

@@ -187,7 +187,7 @@ class TokenAcceptor:
 
         def get_value(self):
             """
-            Retuns the current value of the cursor as defined by itself. This can be
+            Returns the current value of the cursor as defined by itself. This can be
             either the ongoing representation of its temporary state, or its final value
             usable for the application once it reaches accepted state. At that point,
             cursors that return the same value are considered identical and duplicates
@@ -195,6 +195,23 @@ class TokenAcceptor:
             Override.
             """
             return None
+
+        def get_value_path(self):
+            """
+            Returns the path of the value being pointed at by the cursor as defined by the
+            application. This can be for example a JSON path in the case of a JSON acceptor.
+            For higher-level application purposes only, not required for accepting.
+            Override.
+            """
+            return ""
+
+        def is_in_value(self):
+            """
+            Returns true if the cursor is accepting a value as opposed to syntactic elements.
+            Used in conjunction with get_value_path().
+            Override.
+            """
+            return False
 
         def prune(self, trie: TokenTrie) -> Iterable[(str, TokenTrie)]:
             """
@@ -425,6 +442,7 @@ class StateMachineAcceptor(TokenAcceptor):
             copy.target_state = None
             copy.accept_history = copy.accept_history + [copy.transition_cursor.cursor]
             copy.transition_cursor = None
+            copy.consumed_character_count = 0
             # De-duplicate cursors that have reached the same state with the same value.
             # This prevents combinatorial explosion because of e.g. empty transitions.
             state_value = (copy.current_state, repr(copy.get_value()))
@@ -434,6 +452,24 @@ class StateMachineAcceptor(TokenAcceptor):
                     cursors.append(AcceptedState(copy))
                 cursors += self._find_transitions(copy, visited_states, traversed_edges)
         return cursors
+
+    def advance_cursor(self, cursor, char):
+        """
+        Advance a cursor, and if it reaches accepted state, cause the state machine to transition.
+        """
+        next_cursors = []
+        traversed_edges = set()
+        for followup_cursor in cursor.transition_cursor.advance(char):
+            copy = cursor.clone()
+            copy.transition_cursor = followup_cursor
+            copy.consumed_character_count += 1
+            if followup_cursor.in_accepted_state():
+                next_cursors += self._cascade_transition(
+                    copy, [], traversed_edges
+                )
+            else:
+                next_cursors.append(copy)
+        return next_cursors
 
     class Cursor(TokenAcceptor.Cursor):
         """
@@ -446,6 +482,7 @@ class StateMachineAcceptor(TokenAcceptor):
             self.current_state = None
             self.transition_cursor = None
             self.target_state = None
+            self.consumed_character_count = 0
 
         def matches_all(self):
             if self.transition_cursor is None:
@@ -463,20 +500,7 @@ class StateMachineAcceptor(TokenAcceptor):
             return self.transition_cursor.prune(trie)
 
         def advance(self, char):
-            next_cursors = []
-            traversed_edges = set()
-            for followup_cursor in self.transition_cursor.advance(char):
-                copy = self.clone()
-                # pylint: disable-next=attribute-defined-outside-init
-                copy.transition_cursor = followup_cursor
-                if followup_cursor.in_accepted_state():
-                    # pylint: disable-next=protected-access
-                    next_cursors += self.acceptor._cascade_transition(
-                        copy, [], traversed_edges
-                    )
-                else:
-                    next_cursors.append(copy)
-            return next_cursors
+            return self.acceptor.advance_cursor(self, char)
 
         # pylint: disable-next=unused-argument
         def start_transition(self, transition_acceptor, target_state) -> bool:
@@ -502,6 +526,16 @@ class StateMachineAcceptor(TokenAcceptor):
             if self.transition_cursor is not None:
                 value.append(self.transition_cursor.get_value())
             return value
+
+        def is_in_value(self):
+            if self.consumed_character_count > 0:
+                return self.transition_cursor.is_in_value()
+            return self.accept_history[-1].is_in_value() if self.accept_history else None
+
+        def get_value_path(self):
+            if self.consumed_character_count > 0:
+                return self.transition_cursor.get_value_path()
+            return self.accept_history[-1].get_value_path() if self.accept_history else ""
 
         def __repr__(self) -> str:
             if self.transition_cursor is not None:

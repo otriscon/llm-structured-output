@@ -150,6 +150,9 @@ class BooleanAcceptor(StateMachineAcceptor):
         def get_value(self):
             return self.value
 
+        def is_in_value(self):
+            return True
+
 
 class NullAcceptor(TextAcceptor):
     """
@@ -158,6 +161,14 @@ class NullAcceptor(TextAcceptor):
 
     def __init__(self):
         super().__init__("null")
+
+    class Cursor(TextAcceptor.Cursor):
+        """
+        Cursor for NullAcceptor
+        """
+
+        def is_in_value(self):
+            return True
 
 
 DigitAcceptor = CharAcceptor("0123456789")
@@ -291,6 +302,9 @@ class StringAcceptor(StateMachineAcceptor):
             else:
                 return f"{self.text}👉"
 
+        def is_in_value(self):
+            return True
+
 
 class StringConstantAcceptor(TextAcceptor):
     """
@@ -310,6 +324,9 @@ class StringConstantAcceptor(TextAcceptor):
             if self.pos == len(self.acceptor.text):
                 return self.acceptor.string
             return super().get_value()
+
+        def is_in_value(self):
+            return True
 
 
 class NumberTokenTrie(TokenTrie):
@@ -404,6 +421,9 @@ class NumberAcceptor(StateMachineAcceptor):
                 return f"{self.text}👉"
             return self.value
 
+        def is_in_value(self):
+            return True
+
 
 class ArrayAcceptor(StateMachineAcceptor):
     """
@@ -440,6 +460,12 @@ class ArrayAcceptor(StateMachineAcceptor):
             if self.current_state == 3:
                 self.value.append(transition_value)
             return True
+
+        def get_value_path(self):
+            index = len(self.value)
+            if self.current_state > 2:
+                index -= 1
+            return f"[{index}]{super().get_value_path()}"
 
 
 class ObjectAcceptor(StateMachineAcceptor):
@@ -519,6 +545,12 @@ class ObjectAcceptor(StateMachineAcceptor):
 
             def get_value(self):
                 return (self.prop_name, self.prop_value)
+
+            def is_in_value(self):
+                return self.current_state >= 4 and super().is_in_value()
+
+            def get_value_path(self):
+                return f".{self.prop_name}{super().get_value_path()}"
 
 
 class JsonAcceptor(StateMachineAcceptor):
