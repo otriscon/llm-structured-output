@@ -454,10 +454,15 @@ class ArrayAcceptor(StateMachineAcceptor):
             super().__init__(acceptor)
             self.value = []
 
+        def clone(self):
+            c = super().clone()
+            c.value = self.value[:]
+            return c
+
         def complete_transition(
             self, transition_value, target_state, is_end_state
         ) -> bool:
-            if self.current_state == 3:
+            if self.current_state == 2:
                 self.value.append(transition_value)
             return True
 
@@ -555,7 +560,7 @@ class ObjectAcceptor(StateMachineAcceptor):
 
 class JsonAcceptor(StateMachineAcceptor):
     """
-    Acceptor for JSON input
+    Acceptor for a JSON value
     """
 
     def get_edges(self, state):
@@ -569,11 +574,6 @@ class JsonAcceptor(StateMachineAcceptor):
                 (ArrayAcceptor(), "$"),
             ]
         return []
-
-    class Cursor(StateMachineAcceptor.Cursor):
-        """
-        Cursor for JsonAcceptor
-        """
 
 
 def prepare_json_acceptor_tries(trie: TokenTrie):
