@@ -36,6 +36,12 @@ class SchemaNotImplementedError(Exception):
     """
 
 
+class InvalidSchemaError(Exception):
+    """
+    Raised when the passed JSON schema is invalid, e.g. a required property is not defined
+    """
+
+
 # pylint: disable-next=invalid-name
 def ConstSchemaAcceptor(schema: dict):
     """
@@ -90,7 +96,7 @@ class StringSchemaAcceptor(StringAcceptor):
             if regex.search(value) is None:
                 return False
         if "format" in self.schema:
-            raise SchemaNotImplementedError()
+            raise SchemaNotImplementedError("string.format")
         return True
 
     class Cursor(StringAcceptor.Cursor):
@@ -336,7 +342,20 @@ class ObjectSchemaAcceptor(ObjectAcceptor):
     def __init__(self, schema, context):
         self.schema = schema
         self.context = context
-        self.properties = schema.get("properties")
+        self.properties = schema.get("properties", {})
+        # Note that, according to the JSON schema specification, additional properties
+        # should be allowed by default. The additionalProperties subschema can be used
+        # to limit this. But we default to only allowing the properties defined in the
+        # schema, because generally we don't want the LLM to generate at will. An
+        # exception to this is when no properties are defined in the schema; in that
+        # case we don't use this class but the superclass to allow any JSON object. 
+        if "additionalProperties" in schema:
+            raise SchemaNotImplementedError("object.additionalProperties")
+        self.required_property_names = schema.get("required", [])
+        for required_property_name in self.required_property_names:
+            if required_property_name not in self.properties:
+                raise InvalidSchemaError(f"Required property '{required_property_name}' not defined")
+        
         assert self.properties is not None
         super().__init__()
 
@@ -354,18 +373,6 @@ class ObjectSchemaAcceptor(ObjectAcceptor):
         else:
             return super().get_edges(state)
 
-    def property_names(self):
-        """
-        Returns the names of the object's properties as defined in the schema
-        """
-        return self.schema.get("properties", {}).keys()
-
-    def required_property_names(self):
-        """
-        Returns the names of the object's required properties as defined in the schema
-        """
-        return self.schema.get("required", [])
-
     class Cursor(ObjectAcceptor.Cursor):
         """
         Cursor for ObjectAcceptor
@@ -379,14 +386,14 @@ class ObjectSchemaAcceptor(ObjectAcceptor):
             if target_state == "$":
                 return all(
                     prop_name in self.value
-                    for prop_name in self.acceptor.required_property_names()
+                    for prop_name in self.acceptor.required_property_names
                 )
             if self.current_state == 3 and target_state == 4:
                 # Is a property already set?
                 return transition_acceptor.prop_name not in self.value
             if self.current_state == 5 and target_state == 2:
                 # Are all allowed properties already set?
-                return len(self.value.keys()) < len(self.acceptor.property_names())
+                return len(self.value.keys()) < len(self.acceptor.properties)
             return True
 
     class PropertyAcceptor(ObjectAcceptor.PropertyAcceptor):
@@ -545,10 +552,15 @@ def JsonSchemaAcceptor(schema, context=None):
     if context is None:
         context = {"defs": defaultdict(dict), "path": ""}
 
+    if schema.get("nullable"):
+        non_nullable = schema.copy()
+        del non_nullable["nullable"]
+        return AnyOfAcceptor([{"type": "null"}, non_nullable], context)
+
     if "$defs" in schema:
         schema_defs = schema["$defs"]
         if "$id" in schema_defs:
-            raise SchemaNotImplementedError()
+            raise SchemaNotImplementedError("$defs.$id")
         for def_name, def_schema in schema_defs.items():
             # Not clear whether defs are relative or absolute, do both
             context["defs"][f"#/$defs{context['path']}/{def_name}"] = def_schema
@@ -566,7 +578,7 @@ def JsonSchemaAcceptor(schema, context=None):
         # supporting the "not" keyword in the general case is out of scope.
         # Some use cases of "not" could be handled, like rejecting generation of certain
         # values for primitive types, e.g. a boolean or string value.
-        raise SchemaNotImplementedError()
+        raise SchemaNotImplementedError("not")
 
     schema_type = schema.get("type")
 
@@ -598,8 +610,11 @@ def JsonSchemaAcceptor(schema, context=None):
         acceptor = EnumSchemaAcceptor(schema)
     elif schema_type == "object":
         if "properties" in schema:
+            # Only allows named properties in the object.
+            # See comment in constructor.
             acceptor = ObjectSchemaAcceptor(schema, context)
         else:
+            # Allows any properties in the object.
             acceptor = ObjectAcceptor()
     elif schema_type == "array":
         if "items" in schema:
