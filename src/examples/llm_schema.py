@@ -125,6 +125,8 @@ class Model:
 
         accepted_token_bitmap = token_acceptor.select_valid_tokens()
         if not accepted_token_bitmap:
+            debug(token_acceptor.cursors)
+            self._debug_top_tokens(logits)
             raise RejectedCompletion()
         token = self._sample(bias_logits(mx, logits, accepted_token_bitmap), temp)
         token_acceptor.advance_token(token)
