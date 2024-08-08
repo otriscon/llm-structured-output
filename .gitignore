@@ -1,4 +1,5 @@
 .cache/
 .venv/
-Library/
+**/Library/
+**/__pycache__/
 dist
