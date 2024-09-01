@@ -186,7 +186,7 @@
                 .replaceAll('\t', '&#x21E5;\t');
 
         async function apiRequest(path, payload, { method, statusText } = {}) {
-            const response = await fetch(`${document.location.href}/${path}`,
+            const response = await fetch(`${document.location.href}${path}`,
                 payload
                     ? {
                         method: method || 'POST',
