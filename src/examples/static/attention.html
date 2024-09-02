@@ -1,0 +1,455 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>Attention</title>
+    <style>
+        body {
+            font-family: monospace;
+            font-size: 15px;
+            color: rgba(10, 10, 20, 0.9);
+            background-color: #d8d3b6;
+        }
+
+        h2 {
+            text-transform: uppercase;
+            font-size: 1.1em;
+            font-weight: 500;
+            padding: 2px 4px 0px 4px;
+            margin-bottom: 6px;
+            color: #775;
+        }
+
+        fieldset {
+            border: none;
+        }
+
+        label {
+            text-transform: uppercase;
+            font-size: 0.8em;
+            font-weight: 500;
+            color: #553;
+        }
+
+        label.vertical {
+            writing-mode: vertical-lr;
+            transform: rotate(180deg);
+            margin-right: 6px;
+        }
+
+        button {
+            font-size: 0.8em;
+            background-color: #c8c3a6;
+            border: 2px solid gray;
+            border-radius: 0.5em;
+            padding: 0.66em;
+            cursor: pointer;
+        }
+
+        button.narrow {
+            padding: 0.2em;
+        }
+
+        button:focus {
+            outline: none;
+            border: 2px solid blue;
+        }
+
+        textarea {
+            font-family: monospace;
+            font-size: 1em;
+            padding: 3px;
+            border-radius: 3px;
+            border: 1px solid gray;
+        }
+
+        textarea:focus {
+            outline: none;
+            border: 1px solid blue;
+        }
+
+        input {
+            border-radius: 2px;
+            border: none;
+            padding: 3px;
+        }
+
+        fieldset {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            justify-items: center;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        #ui {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        #prompt-div,
+        #json-schema-div,
+        #attention-div,
+        #prompt-ppx-div {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        #attention-div,
+        #prompt-ppx-div,
+        #tokens-div {
+            max-width: fit-content;
+        }
+
+        tokens {
+            background-color: #eee;
+            padding: 12px;
+            border-radius: 3px;
+            overflow-x: scroll;
+        }
+
+        token {
+            white-space: pre;
+            padding: 3px 1px;
+            margin: 5px 0;
+            border-left: 1px dashed gray;
+            cursor: default;
+        }
+
+        token:last-of-type {
+            border-right: 1px dashed gray;
+        }
+
+        token.rejected {
+            text-decoration: line-through;
+            text-decoration-color: red;
+        }
+
+        #token-list {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 16px;
+            list-style-type: none;
+            margin-block-start: 8px;
+            margin-block-end: 8px;
+            padding-inline-start: 0;
+            background-color: #eee;
+            padding: 12px;
+            border-radius: 3px;
+        }
+
+        [data-tooltip],
+        token[data-tooltip] {
+            cursor: crosshair;
+        }
+
+        [data-tooltip]:hover::after {
+            display: block;
+            position: absolute;
+            content: attr(data-tooltip);
+            border: 1px solid black;
+            border-radius: 2px;
+            background: #eee;
+            padding: .2em;
+            font-size: 0.8em;
+        }
+
+        #token-attention-popup-div {
+            background-color: white;
+            border: solid gray 1px;
+            border-radius: 3px;
+            position: absolute;
+            z-index: 1;
+        }
+
+        #token-attention-popup-div tbody td {
+            width: 5px;
+            height: 5px;
+        }
+    </style>
+    <script>
+        const sanitize = (text) =>
+            String(text)
+                .replaceAll('&', '&amp')
+                .replaceAll('<', '&lt')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#x27;')
+                .replaceAll('\n', '&#x240A;\n')
+                .replaceAll('\r', '&#x240D;\r')
+                .replaceAll('\t', '&#x21E5;\t');
+
+        async function apiRequest(path, payload, { method, statusText } = {}) {
+            const response = await fetch(`${document.location.href}${path}`,
+                payload
+                    ? {
+                        method: method || 'POST',
+                        body: JSON.stringify(payload),
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    }
+                    : {
+                        method: method || 'GET',
+                    }
+            );
+
+            if (response.ok) {
+                const json = await response.json();
+                return { success: true, response: json };
+            }
+
+            const error = new Error(`${response.status} ${response.statusText}`);
+            error.statusCode = response.status;
+            return { success: false, error };
+        }
+
+        const update = (response) => {
+            document.getElementById('attention-div').classList.remove('hidden');
+            document.getElementById('tokens-div').classList.remove('hidden');
+
+            const scoreToStyle = (score, scale = 1.0) =>
+                `style="background-color: rgb(255, ${Math.round(255 * (1 - 0.66 * score / scale))
+                }, ${Math.round(255 * (1 - score / scale))
+                })"`;
+
+            const promptPpxElement = document.getElementById('prompt-ppx-div');
+            if (response.prompt_perplexity) {
+                promptPpxElement.classList.remove('hidden');
+                const scale = Math.max(...response.prompt_perplexity);
+                const scores = response.prompt_perplexity;
+                document.getElementById('prompt-ppx-tokens').innerHTML =
+                    `<token style="background-color: rgb(200, 200, 200)">${sanitize(response.fragments[0])}</token>` +
+                    scores.slice(1).map(
+                        (score, i) => `<token data-index="${i + 1}" data-tooltip="loss=${Math.round(score * 1e4) / 1e4}" ${scoreToStyle(score, scale)}>${sanitize(response.fragments[i + 1])}</token>`
+                    ).join('');
+            } else {
+                promptPpxElement.classList.add('hidden');
+            }
+
+            const attentionLayerElement = document.getElementById('attention-layer-select');
+            const selectedLayers = new Set([...attentionLayerElement.selectedOptions].map((opt) => opt.value));
+            attentionLayerElement.options.length = 0
+            attentionLayerElement.options.add(new Option("All", "*", true, !selectedLayers.length));
+            response.attention_scores.forEach((_, i) => {
+                const layer = String(i);
+                attentionLayerElement.options.add(new Option(layer, layer, false, selectedLayers.has(layer)));
+            });
+
+            const attentionHeadElement = document.getElementById('attention-head-select');
+            selectedHeads = new Set([...attentionHeadElement.selectedOptions].map((opt) => opt.value));
+            attentionHeadElement.options.length = 0;
+            attentionHeadElement.options.add(new Option("All", "*", true, !selectedHeads.length));
+            // This assumes all layers have the same amount of heads, which is generally but not always true.
+            response.attention_scores[0].forEach((_, i) => {
+                const head = String(i);
+                attentionHeadElement.options.add(new Option(head, head, false, selectedHeads.has(head)));
+            });
+
+            const attentionTokensElement = document.getElementById('attention-tokens');
+
+            const attentionTokenMouseEnterHandler = (event) => {
+                token_idx = event.target.getAttribute('data-index');
+                const scale = 1;
+                tbody = document.querySelector('#token-attention-popup-div tbody');
+                tbody.innerHTML = response.attention_scores.map(
+                    (layer, layer_idx) => `<tr>${layer.map((head, head_idx) => `<td ${scoreToStyle(head[token_idx])}</td>`).join('')
+                        }</tr>`
+                ).join('\n');
+                popup = document.getElementById('token-attention-popup-div');
+                rect = event.target.getBoundingClientRect();
+                popup.style.left = `${Math.ceil(rect.left + window.scrollX)}px`;
+                popup.style.top = `${Math.ceil(rect.bottom + window.scrollY)}px`;
+                popup.classList.remove('hidden');
+            };
+            const attentionTokenMouseLeaveHandler = (event) => {
+                popup = document.getElementById('token-attention-popup-div');
+                popup.classList.add('hidden');
+            };
+
+            const updateAttention = () => {
+                const selectedLayers = new Set([...attentionLayerElement.selectedOptions].map((opt) => opt.value));
+                const selectedHeads = new Set([...attentionHeadElement.selectedOptions].map((opt) => opt.value));
+                const allLayers = selectedLayers.has("*");
+                const allHeads = selectedHeads.has("*");
+                let scores = response.fragments.map(
+                    (_, token_idx) => response.attention_scores.reduce(
+                        (layer_sum, layer, layer_idx) => {
+                            if (allLayers || selectedLayers.has(String(layer_idx)))
+                                return layer_sum + layer.reduce((head_sum, head, head_idx) => {
+                                    if (allHeads || selectedHeads.has(String(head_idx)))
+                                        return head_sum + head[token_idx];
+                                    return head_sum;
+                                }, 0);
+                            return layer_sum;
+                        }, 0
+                    )
+                );
+                // Transformers seem to allocate a very large amount of non-productive attention
+                // to the first token. Literature has referred to this effect as "null attention".
+                // See [Vig and Belinkov 2019](https://aclanthology.org/W19-4808.pdf)
+                scores[0] = 0;
+                // Weighting the scores to the total produces very faint traces.
+                // const total = scores.reduce((t, s) => t + s, 0);
+                const max = Math.max(...scores);
+                const scale = max;
+                attentionTokensElement.innerHTML =
+                    `<token style="background-color: rgb(200, 200, 200)">${sanitize(response.fragments[0])}</token>` +
+                    scores.slice(1).map(
+                        (score, i) => `<token data-index="${i + 1}" ${scoreToStyle(score, scale)}>${sanitize(response.fragments[i + 1])}</token>`
+                    ).join('');
+                document.querySelectorAll('#attention-tokens token[data-index]').forEach((tokenElement) => {
+                    tokenElement.addEventListener('mouseenter', attentionTokenMouseEnterHandler);
+                    tokenElement.addEventListener('mouseleave', attentionTokenMouseLeaveHandler);
+                });
+            }
+            updateAttention();
+            attentionLayerElement.addEventListener('change', () => updateAttention());
+            attentionHeadElement.addEventListener('change', () => updateAttention());
+
+            const updateTokens = () => {
+                let tokens;
+                if (document.getElementById('top-k-button').checked) {
+                    tokens = response.top_tokens.slice(0, Number(document.getElementById('top-k-number').value));
+                } else {
+                    const topP = Number(document.getElementById('top-p-number').value);
+                    tokens = [];
+                    for (let p = 0.0, i = 0; i < response.top_tokens.length; i += 1) {
+                        token = response.top_tokens[i];
+                        tokens.push(token)
+                        p += token[2];
+                        if (p >= topP) break;
+                    }
+                }
+                document.getElementById('token-list').innerHTML =
+                    tokens.map(([token, fragment, p, rejected]) =>
+                        `<li><token data-token-id=${sanitize(token)} data-tooltip="id=${sanitize(token)} p=${Math.round(p * 1e4) / 1e4}" ${rejected ? 'class="rejected" ' : ''}style="background-color: rgb(${255 * (1 - p)}, 255, ${255 * (1 - p)})">${sanitize(fragment)}</li>`
+                    ).join('');
+                const tokenSubmitHandler = async (event) => {
+                    document.getElementById('tokens-div').classList.add('hidden');
+                    const { response } = await apiRequest('generation/token', { token: event.target.getAttribute('data-token-id') });
+                    if (response) update(response);
+                    event.preventDefault();
+                }
+                document.querySelectorAll('#token-list token[data-token-id]').forEach((tokenElement) => {
+                    tokenElement.addEventListener('click', tokenSubmitHandler);
+                })
+            }
+            document.querySelectorAll('#top-k-button, #top-k-number, #top-p-button, #top-p-number').forEach(
+                (element) => element.addEventListener('change', () => updateTokens())
+            );
+            updateTokens();
+        }
+
+        window.addEventListener('load', () => {
+            const resize = (event) => {
+                event.target.style.height = 'auto';
+                event.target.style.height = (event.target.scrollHeight) + "px";
+            };
+
+            const promptInput = document.getElementById('prompt-area');
+            promptInput.addEventListener('input', resize);
+
+            const jsonSchemaCheck = document.getElementById('json-schema-check');
+            jsonSchemaCheck.addEventListener('change', (event) => {
+                if (event.target.checked) {
+                    document.getElementById('json-schema-div').classList.remove('hidden');
+                } else {
+                    document.getElementById('json-schema-div').classList.add('hidden');
+                }
+            });
+            const jsonSchemaInput = document.getElementById('json-schema-area');
+            jsonSchemaInput.addEventListener('input', resize);
+
+            const startGenerationButton = document.getElementById('start-generation-btn');
+            startGenerationButton.addEventListener('click', async (event) => {
+                event.preventDefault();
+                let prompt = promptInput.value;
+                let schema;
+                if (jsonSchemaCheck.checked) {
+                    schema = jsonSchemaInput.value;
+                    try { JSON.parse(schema); } catch (e) { alert(`Invalid schema: ${e.message}`); return; }
+                    prompt = prompt.replaceAll('{{__SCHEMA__}}', schema);
+                }
+                const { response } = await apiRequest('generation/start', { prompt, schema });
+                if (response) update(response);
+            });
+        });
+
+    </script>
+</head>
+
+<body id="ui">
+    <div id="prompt-div">
+        <h2>Prompt</h2>
+        <textarea id="prompt-area" rows="3">Once upon a midnight dreary,</textarea>
+        <field>
+            <input type="checkbox" id="json-schema-check" />
+            <label for="json-schema-check">Use JSON schema</label>
+        </field>
+        <div id="json-schema-div" class="hidden">
+            <label for="json-schema-area">Enter JSON Schema below. You can use {{__SCHEMA__}} in the prompt to insert
+                the schema.</label>
+            <textarea id="json-schema-area" rows="3"></textarea>
+        </div>
+        <div>
+            <button id="start-generation-btn">Start generation</button>
+        </div>
+    </div>
+    <div id="prompt-ppx-div" class="hidden">
+        <h2>Prompt perplexity</h2>
+        <tokens id="prompt-ppx-tokens"></tokens>
+    </div>
+    <div id="attention-div" class="hidden">
+        <h2>Attention</h2>
+        <fieldset>
+            <field>
+                <label for="attention-layer-select">Layer</label>
+                <select id="attention-layer-select">
+                    <option value="*" selected>All</option>
+                </select>
+            </field>
+            <field>
+                <label for="attention-head-select">Head</label>
+                <select id="attention-head-select">
+                    <option value="*" selected>All</option>
+                </select>
+            </field>
+        </fieldset>
+        <tokens id="attention-tokens"></tokens>
+        <div id="token-attention-popup-div" class="hidden">
+            <span style="display: inline-block; margin-bottom: calc(50% - 2em); vertical-align: bottom"><label
+                    class="vertical">Layer</label></span>
+            <span style="display: inline-block; text-align: center">
+                <label>Head</label>
+                <table>
+                    <tbody></tbody>
+                </table>
+            </span>
+        </div>
+    </div>
+    <div id="tokens-div" class="hidden">
+        <h2>Continuation tokens</h2>
+        <fieldset>
+            <field>
+                <input type="radio" name="sampling-options" id="top-k-button" value="top-k" checked />
+                <label for="top-k-button">Top K</label>
+                <input type="number" id="top-k-number" min="1" max="1000" value="100" />
+            </field>
+            <field>
+                <input type="radio" name="sampling-options" id="top-p-button" value="top-p" />
+                <label for="top-p-button">Top P</label>
+                <input type="number" id="top-p-number" min="0" max="1" step="0.05" value="0.5" />
+            </field>
+        </fieldset>
+        <ul id="token-list"></ul>
+    </div>
+</body>
+
+</html>

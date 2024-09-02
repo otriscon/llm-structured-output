@@ -236,7 +236,7 @@
                     arguments.response_format = { type: 'json_object', schema };
                 }
                 const t0 = Date.now();
-                const response = await fetch(`${document.location.href}/v1/chat/completions`,
+                const response = await fetch(`${document.location.href}v1/chat/completions`,
                     {
                         method: 'POST',
                         body: JSON.stringify(arguments),
