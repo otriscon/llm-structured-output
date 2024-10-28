@@ -1,4 +1,4 @@
-mlx-lm >= 0.16.0
+mlx-lm >= 0.19.2
 sentencepiece
 deepdiff
 requests
