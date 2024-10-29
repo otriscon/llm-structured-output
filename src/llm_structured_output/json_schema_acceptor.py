@@ -349,7 +349,7 @@ class ObjectSchemaAcceptor(ObjectAcceptor):
         # schema, because generally we don't want the LLM to generate at will. An
         # exception to this is when no properties are defined in the schema; in that
         # case we don't use this class but the superclass to allow any JSON object. 
-        if "additionalProperties" in schema:
+        if schema.get("additionalProperties"):
             raise SchemaNotImplementedError("object.additionalProperties")
         self.required_property_names = schema.get("required", [])
         for required_property_name in self.required_property_names:
