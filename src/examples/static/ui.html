@@ -2,6 +2,8 @@
 <html>
 
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM</title>
     <style>
         body {
@@ -219,7 +221,7 @@
             const startGenerationButton = document.getElementById('start-generation-btn');
             startGenerationButton.addEventListener('click', async (event) => {
                 event.preventDefault();
-                let prompt = promptInput.value;
+                let prompt = promptInput.value || "Once upon a midnight dreary,";
                 let schema;
                 if (jsonSchemaCheck.checked) {
                     schema = jsonSchemaInput.value;
@@ -295,7 +297,7 @@
 <body id="ui">
     <div id="prompt-div">
         <h2>Prompt</h2>
-        <textarea id="prompt-area" rows="3">Once upon a midnight dreary,</textarea>
+        <textarea autofocus id="prompt-area" rows="3" placeholder="Once upon a midnight dreary,"></textarea>
         <field>
             <input type="checkbox" id="json-schema-check" />
             <label for="json-schema-check">Use JSON schema</label>

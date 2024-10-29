@@ -16,6 +16,8 @@ from llm_structured_output import (
 )
 from llm_structured_output.util.output import info, setbg, setfg, clear
 
+from .reusable_kv_cache import ReusableKVCache
+
 
 def compute_reluctance(logits, accepted_token_bitmap) -> float:
     """
@@ -73,10 +75,10 @@ def main():
 
 
     info("Starting generation...")
-    cache = None
     tokens = tokenizer_helper.encode_prompt(args.prompt)
+    cache = ReusableKVCache.for_model(model)
     while tokens[-1] != eos_id:
-        logits, cache = model(mx.array(tokens)[None], cache)
+        logits = model(mx.array(tokens)[None], cache)
         accepted_token_bitmap = token_acceptor.select_valid_tokens()
         reluctance = compute_reluctance(logits[0, -1, :], accepted_token_bitmap)
         biased_logits = bias_logits(mx, logits[0, -1, :], accepted_token_bitmap)

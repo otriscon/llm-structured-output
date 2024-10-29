@@ -3,7 +3,7 @@ Helper with improvements over mlx-lm's KVCache.
 """
 
 import mlx.core as mx
-from mlx_lm.models.base import KVCache
+from mlx_lm.models.cache import KVCache
 
 
 class ReusableKVCache(KVCache):
@@ -13,12 +13,7 @@ class ReusableKVCache(KVCache):
 
     @classmethod
     def for_model(cls, model):
-        kv_heads = (
-            [model.n_kv_heads] * len(model.layers)
-            if isinstance(model.n_kv_heads, int)
-            else model.n_kv_heads
-        )
-        return [cls(model.head_dim, n) for n in kv_heads]
+        return [cls() for _ in model.layers]
 
     def reuse(self, new_prompt_length, common_prefix_length):
         """
@@ -34,9 +29,11 @@ class ReusableKVCache(KVCache):
         # would if it were an empty cache.
         current_size = self.keys.shape[2]
         if current_size < new_prompt_length:
+            _, n_kv_heads, _, k_head_dim = self.keys.shape
+            v_head_dim = self.values.shape[3]
             n_steps = (self.step + new_prompt_length - 1) // self.step
-            k_add_shape = (1, self.n_kv_heads, n_steps * self.step - current_size, self.k_head_dim)
-            v_add_shape = (1, self.n_kv_heads, n_steps * self.step - current_size, self.v_head_dim)
+            k_add_shape = (1, n_kv_heads, n_steps * self.step - current_size, k_head_dim)
+            v_add_shape = (1, n_kv_heads, n_steps * self.step - current_size, v_head_dim)
             k_zeros = mx.zeros(k_add_shape, self.keys.dtype)
             v_zeros = mx.zeros(v_add_shape, self.values.dtype)
             self.keys = mx.concatenate([self.keys, k_zeros], axis=2)
@@ -50,9 +47,11 @@ class ReusableKVCache(KVCache):
         """
         prev = self.offset
         if self.keys is None or (prev + keys.shape[2]) > self.keys.shape[2]:
+            B, n_kv_heads, _, k_head_dim = keys.shape
+            v_head_dim = values.shape[3]
             n_steps = (self.step + keys.shape[2] - 1) // self.step
-            k_shape = (keys.shape[0], self.n_kv_heads, n_steps * self.step, self.k_head_dim)
-            v_shape = (keys.shape[0], self.n_kv_heads, n_steps * self.step, self.v_head_dim)
+            k_shape = (B, n_kv_heads, n_steps * self.step, k_head_dim)
+            v_shape = (B, n_kv_heads, n_steps * self.step, v_head_dim)
             new_k = mx.zeros(k_shape, keys.dtype)
             new_v = mx.zeros(v_shape, values.dtype)
             if self.keys is not None:
