@@ -1,4 +1,5 @@
 mlx-lm >= 0.19.2
+tokenizers >= 0.20.1
 sentencepiece
 deepdiff
 requests
