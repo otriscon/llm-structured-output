@@ -31,6 +31,11 @@ class HuggingfaceTokenizerHelper:
         """
         if isinstance(prompt, str):
             return self.tokenizer.encode(prompt)
+        if not self.tokenizer.chat_template:
+            return self.tokenizer.encode("\n\n".join(
+                f"{message['role']}: {message['content']}"
+                for message in prompt
+            ))
         return self.tokenizer.apply_chat_template(prompt)
 
     def no_strip_decode(self, tokens):
