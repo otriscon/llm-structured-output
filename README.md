@@ -104,10 +104,12 @@ pip install -r requirements.txt
 cd ..
 ```
 
+Choose a model from the [HuggingFace MLX community](https://huggingface.co/mlx-community), e.g. `mlx-community/Meta-Llama-3.1-8B-Instruct-4bit`. Models are downloaded automatically on first use and cached locally.
+
 Run the llm_schema example:
 
 ```sh
-MODEL=mistralai/Mistral-7B-Instruct-v0.2
+MODEL=mlx-community/Meta-Llama-3.1-8B-Instruct-4bit
 
 LLM_PROMPT='[INST] Parse the following address into a JSON object: "27 Barrow St, New York, NY 10014". Your answer should be only a JSON object according to this schema: {"type": "object", "properties": {"streetNumber": {"type": "number"}, "streetName": {"type": "string"}, "city": {"type": {"string"}}, "state": {"type": "string"}, "zipCode": {"type": "number"}}}. Do not explain the result, just output it. Do not add any additional information. [/INST]'
 
@@ -119,7 +121,7 @@ python3 -m examples.llm_schema --model-path $MODEL --prompt "$LLM_PROMPT" --sche
 Run the server example:
 
 ```sh
-MODEL_PATH=mistralai/Mistral-7B-Instruct-v0.2 uvicorn examples.server:app --port 8080 --reload
+MODEL_PATH=mlx-community/Meta-Llama-3.1-8B-Instruct-4bit uvicorn examples.server:app --port 8080 --reload
 ```
 
 Try calling the server with this example adapted from [the OpenAI documentation (click on the example request titled _Functions_)](https://platform.openai.com/docs/api-reference/chat/create):
@@ -173,7 +175,7 @@ from mlx_lm.utils import load # Needs pip import mlx_lm
 from llm_structured_output import JsonSchemaAcceptorDriver, HuggingfaceTokenizerHelper, bias_logits
 
 
-MODEL_PATH = "mistralai/Mistral-7B-Instruct-v0.2"
+MODEL_PATH = "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit"
 SCHEMA = {
     "type": "object",
     "properties": {
